@@ -1,10 +1,11 @@
 {
-  "name": "@gitlawb/openclaude",
-  "version": "0.1.6",
-  "description": "Claude Code opened to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
+  "name": "@freeclaude/cli",
+  "version": "0.1.0",
+  "description": "FreeClaude - Claude Code без авторизации. Работает с ZAI, Qwen, DeepSeek, Ollama и любыми OpenAI-compatible API.",
   "type": "module",
   "bin": {
-    "openclaude": "./bin/openclaude"
+    "freeclaude": "./bin/freeclaude",
+    "fc": "./bin/freeclaude"
   },
   "files": [
     "bin/",
