@@ -206,3 +206,40 @@ MIT
 **GitHub:** https://github.com/freeclaude/freeclaude
 **Документация:** https://docs.freeclaude.ai
 **Discord:** https://discord.gg/freeclaude
+
+---
+
+## 🔧 Provider Status
+
+### ✅ Working
+- **ZAI (glm-4.7-flash)**: ✅ Works, free for RF, fast (5-10s), good Russian
+
+### ⏸️ Requires Setup
+- **DeepSeek**: Needs API key → https://platform.deepseek.com
+- **Gemini**: Needs API key → https://aistudio.google.com/apikey
+- **Ollama**: Needs installation → `brew install ollama`
+
+### 📋 Provider Comparison
+
+| Provider | Price | Speed | Russian | Setup |
+|----------|-------|-------|---------|-------|
+| **ZAI** | Free | ⚡ Fast | ✅ Native | ✅ Ready |
+| **DeepSeek** | $0.14/M | ⚡ Fast | ✅ Good | ⏸️ API Key |
+| **Gemini** | Free (15 RPM) | ⚡ Fast | ⚠️ OK | ⏸️ API Key |
+| **Ollama** | Free | 🐢 Local | ✅ Good | ⏸️ Install |
+
+### 🚀 Quick Switch Provider
+
+```bash
+# ZAI (default, free for RF)
+source ~/.openclaw/workspace/freeclaude/.env.zai
+
+# DeepSeek (cheap, high quality)
+source ~/.openclaw/workspace/freeclaude/.env.deepseek
+
+# Gemini (free tier)
+source ~/.openclaw/workspace/freeclaude/.env.gemini
+
+# Ollama (local)
+source ~/.openclaw/workspace/freeclaude/.env.ollama
+```
