@@ -33,6 +33,7 @@ import {
   FallbackChain,
   shouldFallback,
 } from './fallbackChain.js'
+import { recordLatency } from './fallbackEnhanced.js'
 import { logUsage } from '../usage/usageStore.js'
 import { estimateTokens, parseApiUsage } from '../usage/tokenCounter.js'
 import { calculateCost, calculateCostFromUsage } from '../usage/costCalculator.js'
@@ -780,6 +781,9 @@ class OpenAIShimMessages {
             `[FreeClaude] ${promptTokens + completionTokens} tokens (prompt: ${promptTokens}, completion: ${completionTokens}) | ${currentProvider.name} | $${costUsd.toFixed(4)}${attempt > 0 ? ' (fallback)' : ''} | ${durationMs}ms`,
           )
 
+          // Record latency for health tracking
+          recordLatency(currentProvider.name, durationMs, true)
+
           return result
         } catch (error) {
           self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
@@ -798,6 +802,7 @@ class OpenAIShimMessages {
             console.error(
               `[FreeClaude] ${currentProvider.name} failed (${reason}), switching...`,
             )
+            recordLatency(currentProvider.name, Date.now() - startTime, false)
             chain.markDown(currentProvider.name)
             currentProvider = chain.getNext(currentProvider.name)
           } else {

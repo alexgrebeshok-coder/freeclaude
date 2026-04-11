@@ -54,6 +54,8 @@ import securityReview from './commands/security-review.js'
 import bughunter from './commands/bughunter/index.js'
 import terminalSetup from './commands/terminalSetup/index.js'
 import usage from './commands/usage/index.js'
+import undo from './commands/undo/index.js'
+import repoMap from './commands/repo-map/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
 import { feature } from 'bun:bundle'
@@ -314,6 +316,8 @@ const COMMANDS = memoize((): Command[] => [
   extraUsage,
   extraUsageNonInteractive,
   rateLimitOptions,
+  repoMap,
+  undo,
   usage,
   usageReport,
   vim,
@@ -626,6 +630,8 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   vim, // Toggle vim mode
   cost, // Show session cost (local cost tracking)
   usage, // Show usage info
+  undo, // Undo last commit (soft reset)
+  repoMap, // Show repository structure
   copy, // Copy last message
   btw, // Quick note
   feedback, // Send feedback
