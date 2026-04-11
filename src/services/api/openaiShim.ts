@@ -33,6 +33,9 @@ import {
   FallbackChain,
   shouldFallback,
 } from './fallbackChain.js'
+import { logUsage } from '../usage/usageStore.js'
+import { estimateTokens } from '../usage/tokenCounter.js'
+import { calculateCost } from '../usage/costCalculator.js'
 
 // ---------------------------------------------------------------------------
 // Types — minimal subset of Anthropic SDK types we need to produce
@@ -684,13 +687,42 @@ class OpenAIShimMessages {
         process.env.OPENAI_MODEL = currentProvider.model
 
         try {
+          const startTime = Date.now()
           // Override model in params so resolveProviderRequest picks it up
           const result = await self._createSingle(
             { ...params, model: currentProvider.model },
             options,
           )
+          const durationMs = Date.now() - startTime
           chain.markSuccess(currentProvider.name)
           self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
+
+          // Log usage
+          const promptText = typeof params.messages === 'string'
+            ? params.messages
+            : JSON.stringify(params.messages ?? '')
+          const completionText = typeof result === 'string'
+            ? result
+            : JSON.stringify(result?.content ?? result ?? '')
+          const promptTokens = estimateTokens(promptText)
+          const completionTokens = estimateTokens(completionText)
+
+          logUsage({
+            timestamp: new Date().toISOString(),
+            provider: currentProvider.name,
+            model: currentProvider.model,
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens,
+            costUsd: calculateCost(currentProvider.name, promptTokens, completionTokens),
+            durationMs,
+            fallback: attempt > 0,
+          })
+
+          console.error(
+            `[FreeClaude] ${promptTokens + completionTokens} tokens (prompt: ${promptTokens}, completion: ${completionTokens}) | ${currentProvider.name} | $${calculateCost(currentProvider.name, promptTokens, completionTokens).toFixed(4)}${attempt > 0 ? ' (fallback)' : ''}`,
+          )
+
           return result
         } catch (error) {
           self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
