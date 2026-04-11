@@ -711,6 +711,7 @@ class OpenAIShimMessages {
       let currentProvider = chain.getCurrent()
       let lastError: Error | null = null
       const maxAttempts = chain.getProviders().length
+      let startTime = 0
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (!currentProvider) break
