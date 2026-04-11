@@ -29,6 +29,10 @@ import {
   resolveCodexApiCredentials,
   resolveProviderRequest,
 } from './providerConfig.js'
+import {
+  FallbackChain,
+  shouldFallback,
+} from './fallbackChain.js'
 
 // ---------------------------------------------------------------------------
 // Types — minimal subset of Anthropic SDK types we need to produce
@@ -631,12 +635,116 @@ class OpenAIShimStream {
 
 class OpenAIShimMessages {
   private defaultHeaders: Record<string, string>
+  private fallbackChain: FallbackChain
 
   constructor(defaultHeaders: Record<string, string>) {
     this.defaultHeaders = defaultHeaders
+    this.fallbackChain = new FallbackChain()
   }
 
   create(
+    params: ShimCreateParams,
+    options?: { signal?: AbortSignal; headers?: Record<string, string> },
+  ) {
+    // If fallback chain is enabled (multiple providers), wrap with retry logic
+    if (this.fallbackChain.isEnabled()) {
+      return this._createWithFallback(params, options)
+    }
+
+    // Original behavior — single provider
+    return this._createSingle(params, options)
+  }
+
+  /**
+   * Fallback chain wrapper: tries multiple providers on 401/429/5xx errors.
+   * Returns a thenable with .withResponse (same shape as _createSingle).
+   */
+  private _createWithFallback(
+    params: ShimCreateParams,
+    options?: { signal?: AbortSignal; headers?: Record<string, string> },
+  ) {
+    const self = this
+    const chain = this.fallbackChain
+
+    const promise = (async () => {
+      let currentProvider = chain.getCurrent()
+      let lastError: Error | null = null
+      const maxAttempts = chain.getProviders().length
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (!currentProvider) break
+
+        // Override env vars for this provider
+        const prevApiKey = process.env.OPENAI_API_KEY
+        const prevBaseUrl = process.env.OPENAI_BASE_URL
+        const prevModel = process.env.OPENAI_MODEL
+
+        process.env.OPENAI_API_KEY = currentProvider.apiKey
+        process.env.OPENAI_BASE_URL = currentProvider.baseUrl
+        process.env.OPENAI_MODEL = currentProvider.model
+
+        try {
+          // Override model in params so resolveProviderRequest picks it up
+          const result = await self._createSingle(
+            { ...params, model: currentProvider.model },
+            options,
+          )
+          chain.markSuccess(currentProvider.name)
+          self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
+          return result
+        } catch (error) {
+          self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
+          lastError = error as Error
+
+          const match = (error as Error).message?.match(/OpenAI API error (\d+):/)
+          const statusCode = match ? parseInt(match[1], 10) : 0
+
+          if (shouldFallback(statusCode)) {
+            console.error(
+              `[FreeClaude] ${currentProvider.name} failed (${statusCode}), switching...`,
+            )
+            chain.markDown(currentProvider.name)
+            currentProvider = chain.getNext(currentProvider.name)
+          } else {
+            throw error
+          }
+        }
+      }
+
+      throw lastError || new Error('[FreeClaude] All providers exhausted')
+    })()
+
+    // Attach .withResponse for compatibility with Anthropic SDK
+    ;(promise as unknown as Record<string, unknown>).withResponse =
+      async () => {
+        const data = await promise
+        return {
+          data,
+          response: new Response(),
+          request_id: makeMessageId(),
+        }
+      }
+
+    return promise
+  }
+
+  private _restoreEnv(
+    prevApiKey: string | undefined,
+    prevBaseUrl: string | undefined,
+    prevModel: string | undefined,
+  ): void {
+    if (prevApiKey !== undefined) process.env.OPENAI_API_KEY = prevApiKey
+    else delete process.env.OPENAI_API_KEY
+    if (prevBaseUrl !== undefined) process.env.OPENAI_BASE_URL = prevBaseUrl
+    else delete process.env.OPENAI_BASE_URL
+    if (prevModel !== undefined) process.env.OPENAI_MODEL = prevModel
+    else delete process.env.OPENAI_MODEL
+  }
+
+  /**
+   * Original create logic (single provider, no fallback).
+   */
+  private _createSingle(
     params: ShimCreateParams,
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
   ) {

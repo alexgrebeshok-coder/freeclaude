@@ -3,6 +3,9 @@ import {
   resolveCodexApiCredentials,
   resolveProviderRequest,
 } from '../services/api/providerConfig.js'
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
@@ -77,8 +80,23 @@ function validateProviderEnvOrExit(): void {
   }
 
   if (!process.env.OPENAI_API_KEY && !isLocalProviderUrl(request.baseUrl)) {
-    console.error('OPENAI_API_KEY is required when CLAUDE_CODE_USE_OPENAI=1 and OPENAI_BASE_URL is not local.')
-    process.exit(1)
+    // Check if fallback chain config exists with a non-env provider (e.g. ollama with literal key)
+    const configPath = join(homedir(), '.freeclaude.json')
+    let hasFallbackProvider = false
+
+    if (existsSync(configPath)) {
+      try {
+        const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+        hasFallbackProvider = Array.isArray(config.providers) && config.providers.some(
+          (p: { apiKey?: string }) => p.apiKey && !p.apiKey.startsWith('env:') && p.apiKey !== ''
+        )
+      } catch { /* ignore parse errors */ }
+    }
+
+    if (!hasFallbackProvider) {
+      console.error('OPENAI_API_KEY is required when CLAUDE_CODE_USE_OPENAI=1 and OPENAI_BASE_URL is not local.')
+      process.exit(1)
+    }
   }
 }
 

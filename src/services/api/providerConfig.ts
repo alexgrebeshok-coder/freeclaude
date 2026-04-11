@@ -5,6 +5,10 @@ import { join } from 'node:path'
 export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
 export const DEFAULT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 
+// Re-export from fallbackChain for convenience
+export { FallbackChain, shouldFallback, resolveApiKey } from './fallbackChain.js'
+export type { ProviderConfig, FallbackDefaults, FallbackStats } from './fallbackChain.js'
+
 const CODEX_ALIAS_MODELS: Record<
   string,
   {
