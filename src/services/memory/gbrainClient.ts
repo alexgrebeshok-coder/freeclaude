@@ -74,35 +74,24 @@ export async function searchGBrain(
         }
 
         try {
-          const parsed = JSON.parse(stdout.trim())
-          const items: GBrainResult[] = (parsed.results || parsed || [])
-            .map((item: Record<string, unknown>) => ({
-              content: String(item.content || item.text || ''),
-              score: Number(item.score || item.relevance || 0),
-              source: String(item.source || item.file || item.path || ''),
-            }))
-            .filter((r: GBrainResult) => r.content && r.score >= threshold)
+          const text = stdout.trim()
+          const items: GBrainResult[] = []
 
-          resolve(items)
+          // GBrain outputs: [score] source -- content
+          for (const line of text.split('\n')) {
+            const match = line.match(/^\[([\d.]+)\]\s+(\S+)\s+--\s+(.+)$/)
+            if (match) {
+              items.push({
+                score: parseFloat(match[1]),
+                source: match[2],
+                content: match[3].trim(),
+              })
+            }
+          }
+
+          resolve(items.filter(r => r.score >= threshold))
         } catch {
-          // Try to parse NDJSON
-          const lines = stdout.trim().split('\n').filter(Boolean)
-          const items: GBrainResult[] = lines
-            .map(line => {
-              try {
-                const item = JSON.parse(line)
-                return {
-                  content: String(item.content || item.text || ''),
-                  score: Number(item.score || 0),
-                  source: String(item.source || ''),
-                }
-              } catch {
-                return null
-              }
-            })
-            .filter((r): r is GBrainResult => r !== null && r.content && r.score >= threshold)
-
-          resolve(items)
+          resolve([])
         }
       })
     })
