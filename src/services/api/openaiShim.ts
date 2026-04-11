@@ -36,6 +36,7 @@ import {
 import { logUsage } from '../usage/usageStore.js'
 import { estimateTokens } from '../usage/tokenCounter.js'
 import { calculateCost } from '../usage/costCalculator.js'
+import { enrichContext } from '../memory/contextEnricher.js'
 
 // ---------------------------------------------------------------------------
 // Types — minimal subset of Anthropic SDK types we need to produce
@@ -670,6 +671,42 @@ class OpenAIShimMessages {
     const chain = this.fallbackChain
 
     const promise = (async () => {
+      // Enrich context with GBrain if available
+      const lastUserMsg = Array.isArray(params.messages)
+        ? params.messages
+            ?.filter((m: Record<string, unknown>) => m.role === 'user')
+            .pop()
+        : undefined
+      const userText = typeof lastUserMsg?.content === 'string'
+        ? lastUserMsg.content
+        : ''
+      let enrichedContext = ''
+      if (userText.length > 10) {
+        try {
+          const { enrichedSystemPrompt } = await enrichContext(userText)
+          enrichedContext = enrichedSystemPrompt
+        } catch {
+          // Non-critical — silently continue without enrichment
+        }
+      }
+
+      // Inject enriched context into system message if found
+      if (enrichedContext) {
+        const msgs = Array.isArray(params.messages) ? [...params.messages] : params.messages
+        if (Array.isArray(msgs)) {
+          const sysIdx = msgs.findIndex((m: Record<string, unknown>) => m.role === 'system')
+          if (sysIdx >= 0) {
+            const sysMsg = msgs[sysIdx]
+            msgs[sysIdx] = {
+              ...sysMsg,
+              content: (sysMsg.content as string) + enrichedContext,
+            }
+          } else {
+            msgs.unshift({ role: 'system', content: enrichedContext })
+          }
+          params = { ...params, messages: msgs }
+        }
+      }
       let currentProvider = chain.getCurrent()
       let lastError: Error | null = null
       const maxAttempts = chain.getProviders().length
