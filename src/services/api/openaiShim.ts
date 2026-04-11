@@ -34,8 +34,8 @@ import {
   shouldFallback,
 } from './fallbackChain.js'
 import { logUsage } from '../usage/usageStore.js'
-import { estimateTokens } from '../usage/tokenCounter.js'
-import { calculateCost } from '../usage/costCalculator.js'
+import { estimateTokens, parseApiUsage } from '../usage/tokenCounter.js'
+import { calculateCost, calculateCostFromUsage } from '../usage/costCalculator.js'
 import { enrichContext } from '../memory/contextEnricher.js'
 
 // ---------------------------------------------------------------------------
@@ -734,15 +734,35 @@ class OpenAIShimMessages {
           chain.markSuccess(currentProvider.name)
           self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
 
-          // Log usage
+          // Log usage — prefer actual API token counts when available
           const promptText = typeof params.messages === 'string'
             ? params.messages
             : JSON.stringify(params.messages ?? '')
           const completionText = typeof result === 'string'
             ? result
             : JSON.stringify(result?.content ?? result ?? '')
-          const promptTokens = estimateTokens(promptText)
-          const completionTokens = estimateTokens(completionText)
+
+          // Try to get actual usage from result (non-streaming responses)
+          let promptTokens: number
+          let completionTokens: number
+
+          const apiUsage = (result as Record<string, unknown>)?.usage as {
+            input_tokens?: number
+            output_tokens?: number
+            prompt_tokens?: number
+            completion_tokens?: number
+          } | undefined
+
+          if (apiUsage && (apiUsage.input_tokens || apiUsage.prompt_tokens)) {
+            promptTokens = apiUsage.input_tokens ?? apiUsage.prompt_tokens ?? 0
+            completionTokens = apiUsage.output_tokens ?? apiUsage.completion_tokens ?? 0
+          } else {
+            // Fall back to estimation
+            promptTokens = estimateTokens(promptText)
+            completionTokens = estimateTokens(completionText)
+          }
+
+          const costUsd = calculateCost(currentProvider.name, promptTokens, completionTokens)
 
           logUsage({
             timestamp: new Date().toISOString(),
@@ -751,13 +771,13 @@ class OpenAIShimMessages {
             promptTokens,
             completionTokens,
             totalTokens: promptTokens + completionTokens,
-            costUsd: calculateCost(currentProvider.name, promptTokens, completionTokens),
+            costUsd,
             durationMs,
             fallback: attempt > 0,
           })
 
           console.error(
-            `[FreeClaude] ${promptTokens + completionTokens} tokens (prompt: ${promptTokens}, completion: ${completionTokens}) | ${currentProvider.name} | $${calculateCost(currentProvider.name, promptTokens, completionTokens).toFixed(4)}${attempt > 0 ? ' (fallback)' : ''}`,
+            `[FreeClaude] ${promptTokens + completionTokens} tokens (prompt: ${promptTokens}, completion: ${completionTokens}) | ${currentProvider.name} | $${costUsd.toFixed(4)}${attempt > 0 ? ' (fallback)' : ''} | ${durationMs}ms`,
           )
 
           return result
@@ -768,9 +788,15 @@ class OpenAIShimMessages {
           const match = (error as Error).message?.match(/OpenAI API error (\d+):/)
           const statusCode = match ? parseInt(match[1], 10) : 0
 
-          if (shouldFallback(statusCode)) {
+          // Import here to avoid circular deps
+          const { isNetworkError } = await import('./fallbackChain.js')
+
+          if (shouldFallback(statusCode) || isNetworkError(error as Error)) {
+            const reason = statusCode > 0
+              ? `HTTP ${statusCode}`
+              : (error as Error).message?.slice(0, 60)
             console.error(
-              `[FreeClaude] ${currentProvider.name} failed (${statusCode}), switching...`,
+              `[FreeClaude] ${currentProvider.name} failed (${reason}), switching...`,
             )
             chain.markDown(currentProvider.name)
             currentProvider = chain.getNext(currentProvider.name)

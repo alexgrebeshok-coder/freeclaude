@@ -54,8 +54,28 @@ const CONFIG_PATH = join(homedir(), '.freeclaude.json')
 
 const FALLBACK_STATUS_CODES = new Set([401, 429, 500, 502, 503, 504])
 
+// Network error patterns that should trigger fallback
+const NETWORK_ERROR_PATTERNS = [
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'socket hang up',
+  'fetch failed',
+  'network error',
+  'abort error',
+]
+
 export function shouldFallback(statusCode: number): boolean {
   return FALLBACK_STATUS_CODES.has(statusCode)
+}
+
+/**
+ * Check if an error message indicates a network/transport failure.
+ */
+export function isNetworkError(error: Error): boolean {
+  const msg = error.message.toLowerCase()
+  return NETWORK_ERROR_PATTERNS.some(p => msg.includes(p.toLowerCase()))
 }
 
 // ---------------------------------------------------------------------------

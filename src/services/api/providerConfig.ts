@@ -184,7 +184,7 @@ export function resolveProviderRequest(options?: {
     options?.model?.trim() ||
     process.env.OPENAI_MODEL?.trim() ||
     options?.fallbackModel?.trim() ||
-    'gpt-4o'
+    'gpt-4o-mini'  // FreeClaude v3: default to cheapest available model
   const descriptor = parseModelDescriptor(requestedModel)
   const rawBaseUrl =
     options?.baseUrl ??
