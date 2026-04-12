@@ -33,5 +33,11 @@ jobs:
       - name: Provider tests
         run: bun run test:provider
 
+      - name: Background jobs tests
+        run: bun test src/commands/jobs/jobs.test.ts
+
+      - name: Voice service tests
+        run: bun test src/services/voice/*.test.ts
+
       - name: Provider recommendation tests
         run: npm run test:provider-recommendation
