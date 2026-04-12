@@ -7,8 +7,8 @@
 Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible provider.
 
 [![v3.0.0-alpha.1](https://img.shields.io/badge/version-3.0.0--alpha.1-orange)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
-[![Phase 4](https://img.shields.io/badge/Phase-0..3%20Done%20%7C%204%20In%20Progress-green)](https://github.com/alexgrebeshok-coder/freeclaude)
-[![Tests](https://img.shields.io/badge/tests-137%2F139%20pass-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
+[![Phase 4](https://img.shields.io/badge/Phase-0..3%20Done%20%7C%20Sprint%206-8%20Done-green)](https://github.com/alexgrebeshok-coder/freeclaude)
+[![Tests](https://img.shields.io/badge/tests-51%2F51%20pass-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 [English](#english) · [Русский](#русский)
