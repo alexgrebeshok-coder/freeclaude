@@ -64,6 +64,8 @@ import remember from './commands/remember/index.js'
 import recall from './commands/recall/index.js'
 import forget from './commands/forget/index.js'
 import memories from './commands/memories/index.js'
+import providers from './commands/providers/index.js'
+import cost from './commands/cost/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
 import { feature } from 'bun:bundle'
@@ -656,6 +658,8 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   recall, // Retrieve memory
   forget, // Delete memory
   memories, // List all memories
+  providers, // Show provider config and test connectivity
+  cost, // Cost tracking summary
   copy, // Copy last message
   btw, // Quick note
   feedback, // Send feedback
