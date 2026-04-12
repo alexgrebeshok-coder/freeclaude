@@ -6,8 +6,8 @@ export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
 export const DEFAULT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 
 // Re-export from fallbackChain for convenience
-export { FallbackChain, shouldFallback, resolveApiKey } from './fallbackChain.js'
-export type { ProviderConfig, FallbackDefaults, FallbackStats } from './fallbackChain.js'
+export { FallbackChain, shouldFallback, resolveApiKey, CONFIG_PATH } from './fallbackChain.ts'
+export type { ProviderConfig, FallbackDefaults, FallbackStats } from './fallbackChain.ts'
 
 const CODEX_ALIAS_MODELS: Record<
   string,
