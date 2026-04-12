@@ -8,7 +8,9 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 
 [![v3.0.0-alpha.1](https://img.shields.io/badge/version-3.0.0--alpha.1-orange)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
 [![Phase 4](https://img.shields.io/badge/Phase-0..3%20Done%20%7C%20Sprint%206-8%20Done-green)](https://github.com/alexgrebeshok-coder/freeclaude)
-[![Tests](https://img.shields.io/badge/tests-51%2F51%20pass-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
+[![Tests](https://img.shields.io/badge/tests-70%2F70%20pass-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
+[![Rust](https://img.shields.io/badge/Rust-Tauri%20Desktop-orange)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
+[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-blue)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/extension)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 [English](#english) · [Русский](#русский)
@@ -23,11 +25,11 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 
 | Фаза | Фичи | Статус |
 |------|-------|--------|
-| **Phase 0** | 🔧 Quality foundation, branding, GBrain path fix | ✅ |
-| **Phase 1** | 🗂️ `/undo`, `/repo-map`, Voice (Whisper + Edge TTS), Enhanced Fallback | ✅ |
-| **Phase 2** | 🪝 Hook system (5 safety hooks), `/setup` provider wizard | ✅ |
-| **Phase 3** | 🔌 CEOClaw PM MCP, 1С OData MCP (unique!) | ✅ |
-| **Phase 4** | 🚀 Startup banner, docs, GitHub Actions CI | 🔄 |
+| **Phase 0** | 🔧 Quality foundation, branding, CI/CD | ✅ |
+| **Phase 1** | 🗂️ `/undo`, `/repo-map`, Voice, Fallback, Memory, Cost tracking | ✅ |
+| **Phase 2** | 🪝 Hooks (26 types), Plugins (20K+ lines), Desktop App (Tauri) | ✅ |
+| **Phase 3** | 💻 VS Code Extension, MCP servers, Background Agents | ✅ |
+| **Phase 4** | 🚀 Launch: npm, Homebrew, Docker | 🔄 |
 
 ### Уникальные фичи (нет у конкурентов)
 
@@ -74,7 +76,18 @@ node dist/cli.mjs
 | `/undo [N]` | Откат последних N коммитов (soft reset) |
 | `/repo-map` | Обзор структуры репозитория |
 | `/setup` | Автоматическое обнаружение провайдеров |
-| `/cost` | Статистика использования и стоимости |
+| `/providers` | Статус провайдеров с тестом коннективности |
+| `/providers test` | Пинг всех провайдеров (latency) |
+| `/cost` | Статистика стоимости (today/week/month) |
+| `/remember <key> <value>` | Сохранить факт в память |
+| `/recall <key>` | Найти в памяти |
+| `/forget <key>` | Удалить из памяти |
+| `/memories` | Список всех сохранённых фактов |
+| `/run <task>` | Запустить фоновую AI-задачу |
+| `/jobs` | Список фоновых задач |
+| `/job <id>` | Результат фоновой задачи |
+| `/hooks` | Управление хуками (26 типов событий) |
+| `/memory` | Редактировать CLAUDE.md файлы |
 | `/status` | Текущая сессия и провайдер |
 
 ### Hook System
