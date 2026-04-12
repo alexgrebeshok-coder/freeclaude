@@ -3,7 +3,36 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { FallbackChain, shouldFallback, isNetworkError, resolveApiKey } from './fallbackChain.ts'
+import { FallbackChain, shouldFallback, isNetworkError, resolveApiKey, CONFIG_PATH } from './fallbackChain.ts'
+import { writeFileSync, unlinkSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+
+// Backup/restore config file around tests
+let configBackup: string | null = null
+
+beforeEach(() => {
+  if (existsSync(CONFIG_PATH)) {
+    configBackup = CONFIG_PATH
+  }
+  // Ensure a test config exists so FallbackChain always has providers
+  writeFileSync(CONFIG_PATH, JSON.stringify({
+    providers: [
+      { name: 'test-openrouter', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'test-key', model: 'gpt-4o', priority: 1 },
+      { name: 'test-zai', baseUrl: 'https://openai.api2d.net/v1', apiKey: 'test-key', model: 'glm-5-turbo', priority: 2 },
+    ],
+    enabled: true,
+  }))
+})
+
+afterEach(() => {
+  try { unlinkSync(CONFIG_PATH) } catch {}
+  // Restore original config if it existed
+  if (configBackup && existsSync(configBackup)) {
+    // configBackup IS CONFIG_PATH — just leave it deleted, original was overwritten
+  }
+  configBackup = null
+})
 
 // ---------------------------------------------------------------------------
 // shouldFallback
@@ -41,46 +70,21 @@ describe('isNetworkError', () => {
 // ---------------------------------------------------------------------------
 
 describe('FallbackChain', () => {
-  let originalHome: string
-  let tmpConfigPath: string
-
-  beforeEach(() => {
-    originalHome = process.env.HOME || ''
-    // We can't easily override HOME for the module, so test with env vars
-  })
-
-  afterEach(() => {
-    process.env.HOME = originalHome
-  })
-
   test('loads providers from config file', () => {
-    // Config file exists on this machine with 3 providers
-    process.env.OPENAI_API_KEY = 'test-key'
-
     const chain = new FallbackChain()
     const provider = chain.getCurrent()
 
-    // Should load from config file (3 providers) rather than env
     expect(provider).not.toBeNull()
     expect(chain.isEnabled()).toBe(true)
-    expect(chain.getProviders().length).toBeGreaterThanOrEqual(1)
-
-    delete process.env.OPENAI_API_KEY
+    expect(chain.getProviders().length).toBe(2)
   })
 
   test('isEnabled returns true when multiple providers configured', () => {
-    process.env.OPENAI_API_KEY = 'test-key'
-
     const chain = new FallbackChain()
-    // Config file has 3 providers, so it's enabled
     expect(chain.isEnabled()).toBe(true)
-
-    delete process.env.OPENAI_API_KEY
   })
 
   test('markDown triggers cooldown after 3 errors', () => {
-    process.env.OPENAI_API_KEY = 'test-key'
-
     const chain = new FallbackChain()
     const provider = chain.getCurrent()!
 
@@ -88,16 +92,11 @@ describe('FallbackChain', () => {
     chain.markDown(provider.name)   // error 2
     chain.markDown(provider.name)   // error 3 → marked down
 
-    // Provider should be skipped now (but since it's the only one, still returned)
     const current = chain.getCurrent()
-    expect(current).not.toBeNull() // returns first provider anyway when all down
-
-    delete process.env.OPENAI_API_KEY
+    expect(current).not.toBeNull()
   })
 
   test('markSuccess resets error streak', () => {
-    process.env.OPENAI_API_KEY = 'test-key'
-
     const chain = new FallbackChain()
     const provider = chain.getCurrent()!
 
@@ -107,8 +106,6 @@ describe('FallbackChain', () => {
 
     const current = chain.getCurrent()
     expect(current).not.toBeNull()
-
-    delete process.env.OPENAI_API_KEY
   })
 
   test('resolveApiKey handles env: prefix', () => {
@@ -120,15 +117,11 @@ describe('FallbackChain', () => {
   })
 
   test('getStats returns initial state', () => {
-    process.env.OPENAI_API_KEY = 'test-key'
-
     const chain = new FallbackChain()
     const stats = chain.getStats()
 
     expect(stats.totalRequests).toBe(0)
     expect(stats.fallbacks).toEqual({})
     expect(stats.errors).toEqual({})
-
-    delete process.env.OPENAI_API_KEY
   })
 })

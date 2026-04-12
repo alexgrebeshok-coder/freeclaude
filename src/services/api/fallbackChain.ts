@@ -46,7 +46,7 @@ interface ProviderRuntime extends ProviderConfig {
 // Config file path
 // ---------------------------------------------------------------------------
 
-const CONFIG_PATH = join(homedir(), '.freeclaude.json')
+export const CONFIG_PATH = join(homedir(), '.freeclaude.json')
 
 // ---------------------------------------------------------------------------
 // Errors that trigger fallback
