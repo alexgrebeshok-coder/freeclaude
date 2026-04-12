@@ -6,8 +6,8 @@
 
 Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible provider.
 
-[![v3.0.0-alpha.1](https://img.shields.io/badge/version-3.0.0--alpha.1-orange)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
-[![Phase 4](https://img.shields.io/badge/Phase-0..3%20Done%20%7C%20Sprint%206-8%20Done-green)](https://github.com/alexgrebeshok-coder/freeclaude)
+[![v3.0.0](https://img.shields.io/badge/version-3.0.0-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
+[![Phase 0-4 Done](https://img.shields.io/badge/Phase-0..4%20Done%20%7C%20Launch%20Ready-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
 [![Tests](https://img.shields.io/badge/tests-70%2F70%20pass-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
 [![Rust](https://img.shields.io/badge/Rust-Tauri%20Desktop-orange)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
 [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-blue)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/extension)
@@ -29,7 +29,7 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 | **Phase 1** | 🗂️ `/undo`, `/repo-map`, Voice, Fallback, Memory, Cost tracking | ✅ |
 | **Phase 2** | 🪝 Hooks (26 types), Plugins (20K+ lines), Desktop App (Tauri) | ✅ |
 | **Phase 3** | 💻 VS Code Extension, MCP servers, Background Agents | ✅ |
-| **Phase 4** | 🚀 Launch: npm, Homebrew, Docker | 🔄 |
+| **Phase 4** | 🚀 Launch: npm, Homebrew, Docker | ✅ |
 
 ### Уникальные фичи (нет у конкурентов)
 

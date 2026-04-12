@@ -1,6 +1,6 @@
 [package]
 name = "freeclaude-desktop"
-version = "3.0.0-alpha.1"
+version = "3.0.0"
 description = "FreeClaude Desktop — Free AI Coding Agent"
 authors = ["FreeClaude Team"]
 edition = "2021"

@@ -45,7 +45,7 @@
 
 ### 0.3 Branding
 - Rename "Open Claude" → "FreeClaude"
-- Version: 3.0.0-alpha.1
+- Version: 3.0.0
 - Startup banner
 
 ---

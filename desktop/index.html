@@ -165,7 +165,7 @@
     <div class="header-left">
       <div class="header-logo">F</div>
       <span class="header-title">FreeClaude</span>
-      <span class="header-version" id="versionBadge">v3.0.0-alpha.1</span>
+      <span class="header-version" id="versionBadge">v3.0.0</span>
     </div>
     <div class="header-right">
       <button class="header-btn" onclick="showProviders()">📡 Providers</button>
@@ -177,7 +177,7 @@
   <div class="main">
     <div class="messages" id="messages">
       <div class="msg msg-system">
-        FreeClaude v3.0.0-alpha.1 — Free AI coding agent. Multi-provider, no subscriptions.
+        FreeClaude v3.0.0 — Free AI coding agent. Multi-provider, no subscriptions.
         Type /help for commands.
       </div>
     </div>
@@ -221,7 +221,7 @@
     // Get version on load
     if (isTauri) {
       invoke('get_version').then(v => {
-        versionBadge.textContent = v || 'v3.0.0-alpha.1';
+        versionBadge.textContent = v || 'v3.0.0';
       }).catch(() => {});
     }
 
