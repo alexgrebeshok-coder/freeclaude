@@ -60,6 +60,10 @@ import setup from './commands/setup/index.js'
 import run from './commands/run/index.js'
 import jobs from './commands/jobs/index.js'
 import job from './commands/job/index.js'
+import remember from './commands/remember/index.js'
+import recall from './commands/recall/index.js'
+import forget from './commands/forget/index.js'
+import memories from './commands/memories/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
 import { feature } from 'bun:bundle'
@@ -326,6 +330,10 @@ const COMMANDS = memoize((): Command[] => [
   run,
   jobs,
   job,
+  remember,
+  recall,
+  forget,
+  memories,
   usage,
   usageReport,
   vim,
@@ -644,6 +652,10 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   run, // Run background AI task
   jobs, // List background tasks
   job, // View background task output
+  remember, // Save memory
+  recall, // Retrieve memory
+  forget, // Delete memory
+  memories, // List all memories
   copy, // Copy last message
   btw, // Quick note
   feedback, // Send feedback
