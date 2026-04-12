@@ -9,7 +9,7 @@
   },
   "files": [
     "bin/",
-    "dist/cli.mjs",
+    "dist/",
     "README.md"
   ],
   "scripts": {

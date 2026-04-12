@@ -1,0 +1,13 @@
+# Ignore everything
+*
+
+# Allow specific files
+!bin/
+!bin/**
+!dist/
+!dist/**
+!package.json
+!README.md
+!Dockerfile
+!.npmignore
+!LICENSE
