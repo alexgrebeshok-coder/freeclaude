@@ -57,6 +57,9 @@ import usage from './commands/usage/index.js'
 import undo from './commands/undo/index.js'
 import repoMap from './commands/repo-map/index.js'
 import setup from './commands/setup/index.js'
+import run from './commands/run/index.js'
+import jobs from './commands/jobs/index.js'
+import job from './commands/job/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
 import { feature } from 'bun:bundle'
@@ -320,6 +323,9 @@ const COMMANDS = memoize((): Command[] => [
   repoMap,
   setup,
   undo,
+  run,
+  jobs,
+  job,
   usage,
   usageReport,
   vim,
@@ -635,6 +641,9 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   undo, // Undo last commit (soft reset)
   repoMap, // Show repository structure
   setup, // Configure providers
+  run, // Run background AI task
+  jobs, // List background tasks
+  job, // View background task output
   copy, // Copy last message
   btw, // Quick note
   feedback, // Send feedback
