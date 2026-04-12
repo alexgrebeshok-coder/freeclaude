@@ -36,6 +36,9 @@ jobs:
       - name: Background jobs tests
         run: bun test src/commands/jobs/jobs.test.ts
 
+      - name: Memory store tests
+        run: bun test src/services/memory/memoryStore.test.ts
+
       - name: Voice service tests
         run: bun test src/services/voice/*.test.ts
 
