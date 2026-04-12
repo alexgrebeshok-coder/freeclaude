@@ -1,0 +1,47 @@
+{
+  "name": "freeclaude",
+  "displayName": "FreeClaude",
+  "description": "Free AI Coding Agent — multi-provider, no subscriptions",
+  "version": "3.0.0",
+  "publisher": "alexgrebeshok",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Machine Learning", "Chat"],
+  "activationEvents": ["onCommand:freeclaude.chat", "onCommand:freeclaude.explain", "onCommand:freeclaude.fix"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "freeclaude.chat",
+        "title": "FreeClaude: Chat",
+        "category": "FreeClaude"
+      },
+      {
+        "command": "freeclaude.explain",
+        "title": "FreeClaude: Explain Code",
+        "category": "FreeClaude"
+      },
+      {
+        "command": "freeclaude.fix",
+        "title": "FreeClaude: Fix Error",
+        "category": "FreeClaude"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "freeclaude.chat",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
