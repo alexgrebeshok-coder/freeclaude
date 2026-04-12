@@ -17,6 +17,7 @@ import { parseCellId } from '../../utils/notebook.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
+import { autoCommitFiles } from '../GitTool/gitToolUtils.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 import {
@@ -81,6 +82,9 @@ export const outputSchema = lazySchema(() =>
     updated_file: z
       .string()
       .describe('The updated notebook content after modification'),
+    autoCommitSha: z.string().optional(),
+    autoCommitMessage: z.string().optional(),
+    autoCommitReason: z.string().optional(),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -131,7 +135,15 @@ export const NotebookEditTool = buildTool({
     )
   },
   mapToolResultToToolResultBlockParam(
-    { cell_id, edit_mode, new_source, error },
+    {
+      autoCommitMessage,
+      autoCommitReason,
+      autoCommitSha,
+      cell_id,
+      edit_mode,
+      new_source,
+      error,
+    },
     toolUseID,
   ) {
     if (error) {
@@ -142,24 +154,29 @@ export const NotebookEditTool = buildTool({
         is_error: true,
       }
     }
+    const autoCommitNote = autoCommitSha
+      ? ` Auto-commit: ${autoCommitSha}${autoCommitMessage ? ` ${autoCommitMessage}` : ''}.`
+      : autoCommitReason
+        ? ` Auto-commit skipped: ${autoCommitReason}.`
+        : ''
     switch (edit_mode) {
       case 'replace':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `Updated cell ${cell_id} with ${new_source}`,
+          content: `Updated cell ${cell_id} with ${new_source}.${autoCommitNote}`,
         }
       case 'insert':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `Inserted cell ${cell_id} with ${new_source}`,
+          content: `Inserted cell ${cell_id} with ${new_source}.${autoCommitNote}`,
         }
       case 'delete':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `Deleted cell ${cell_id}`,
+          content: `Deleted cell ${cell_id}.${autoCommitNote}`,
         }
       default:
         return {
@@ -440,6 +457,7 @@ export const NotebookEditTool = buildTool({
         offset: undefined,
         limit: undefined,
       })
+      const autoCommit = await autoCommitFiles([fullPath])
       const data = {
         new_source,
         cell_type: cell_type ?? 'code',
@@ -450,6 +468,11 @@ export const NotebookEditTool = buildTool({
         notebook_path: fullPath,
         original_file: content,
         updated_file: updatedContent,
+        ...(autoCommit.sha ? { autoCommitSha: autoCommit.sha } : {}),
+        ...(autoCommit.message ? { autoCommitMessage: autoCommit.message } : {}),
+        ...(!autoCommit.committed && autoCommit.reason
+          ? { autoCommitReason: autoCommit.reason }
+          : {}),
       }
       return {
         data,

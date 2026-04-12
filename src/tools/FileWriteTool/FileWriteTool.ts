@@ -42,6 +42,7 @@ import type { PermissionDecision } from '../../utils/permissions/PermissionResul
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../FileEditTool/constants.js'
 import { gitDiffSchema, hunkSchema } from '../FileEditTool/types.js'
+import { autoCommitFiles } from '../GitTool/gitToolUtils.js'
 import { FILE_WRITE_TOOL_NAME, getWriteToolDescription } from './prompt.js'
 import {
   getToolUseSummary,
@@ -84,6 +85,9 @@ const outputSchema = lazySchema(() =>
         'The original file content before the write (null for new files)',
       ),
     gitDiff: gitDiffSchema().optional(),
+    autoCommitSha: z.string().optional(),
+    autoCommitMessage: z.string().optional(),
+    autoCommitReason: z.string().optional(),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -356,6 +360,8 @@ export const FileWriteTool = buildTool({
       })
     }
 
+    const autoCommit = await autoCommitFiles([fullFilePath])
+
     if (oldContent) {
       const patch = getPatchForDisplay({
         filePath: file_path,
@@ -376,6 +382,11 @@ export const FileWriteTool = buildTool({
         structuredPatch: patch,
         originalFile: oldContent,
         ...(gitDiff && { gitDiff }),
+        ...(autoCommit.sha ? { autoCommitSha: autoCommit.sha } : {}),
+        ...(autoCommit.message ? { autoCommitMessage: autoCommit.message } : {}),
+        ...(!autoCommit.committed && autoCommit.reason
+          ? { autoCommitReason: autoCommit.reason }
+          : {}),
       }
       // Track lines added and removed for file updates, right before yielding result
       countLinesChanged(patch)
@@ -399,6 +410,11 @@ export const FileWriteTool = buildTool({
       structuredPatch: [],
       originalFile: null,
       ...(gitDiff && { gitDiff }),
+      ...(autoCommit.sha ? { autoCommitSha: autoCommit.sha } : {}),
+      ...(autoCommit.message ? { autoCommitMessage: autoCommit.message } : {}),
+      ...(!autoCommit.committed && autoCommit.reason
+        ? { autoCommitReason: autoCommit.reason }
+        : {}),
     }
 
     // For creation of new files, count all lines as additions, right before yielding the result
@@ -415,19 +431,27 @@ export const FileWriteTool = buildTool({
       data,
     }
   },
-  mapToolResultToToolResultBlockParam({ filePath, type }, toolUseID) {
+  mapToolResultToToolResultBlockParam(
+    { autoCommitMessage, autoCommitReason, autoCommitSha, filePath, type },
+    toolUseID,
+  ) {
+    const autoCommitNote = autoCommitSha
+      ? ` Auto-commit: ${autoCommitSha}${autoCommitMessage ? ` ${autoCommitMessage}` : ''}.`
+      : autoCommitReason
+        ? ` Auto-commit skipped: ${autoCommitReason}.`
+        : ''
     switch (type) {
       case 'create':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `File created successfully at: ${filePath}`,
+          content: `File created successfully at: ${filePath}.${autoCommitNote}`,
         }
       case 'update':
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: `The file ${filePath} has been updated successfully.`,
+          content: `The file ${filePath} has been updated successfully.${autoCommitNote}`,
         }
     }
   },

@@ -1,4 +1,7 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, test, describe } from 'bun:test'
+import { existsSync, renameSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { createOpenAIShimClient } from './openaiShim.ts'
 
 type FetchType = typeof globalThis.fetch
@@ -9,6 +12,8 @@ const originalEnv = {
 }
 
 const originalFetch = globalThis.fetch
+const CONFIG_PATH = join(homedir(), '.freeclaude.json')
+const CONFIG_BACKUP = CONFIG_PATH + '.bak.test'
 
 type OpenAIShimClient = {
   beta: {
@@ -50,6 +55,10 @@ function makeStreamChunks(chunks: unknown[]): string[] {
 }
 
 beforeEach(() => {
+  // Temporarily hide ~/.freeclaude.json so fallback chain doesn't activate
+  if (existsSync(CONFIG_PATH)) {
+    renameSync(CONFIG_PATH, CONFIG_BACKUP)
+  }
   process.env.OPENAI_BASE_URL = 'http://example.test/v1'
   process.env.OPENAI_API_KEY = 'test-key'
 })
@@ -58,6 +67,10 @@ afterEach(() => {
   process.env.OPENAI_BASE_URL = originalEnv.OPENAI_BASE_URL
   process.env.OPENAI_API_KEY = originalEnv.OPENAI_API_KEY
   globalThis.fetch = originalFetch
+  // Restore config
+  if (existsSync(CONFIG_BACKUP)) {
+    renameSync(CONFIG_BACKUP, CONFIG_PATH)
+  }
 })
 
 test('preserves usage from final OpenAI stream chunk with empty choices', async () => {

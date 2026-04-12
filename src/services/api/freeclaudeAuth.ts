@@ -1,17 +1,17 @@
-/**
- * FreeClaude - Free Claude Code for All
-// Translates Anthropic SDK calls to OpenAI-compatible APIs
+export const CLAUDE_CODE_USE_OPENAI = '1'
 
-// Environment variables needed:
-export const CLAUDE_CODE_USE_OPENAI=1
+export type FreeClaudeAuthEnv = {
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+}
 
-export const OPENaiShimEnv = {
-  apiKeyEnv = process.env;
-  const shims theOpenaiShim as simple API
-  // Config: Simple API key to OpenaiShim.ts
-  // No keychain
-  // bare mode
-
-  export const OPENAI_API_KEY = process.env.OPENaishim_env_vars
-  export const OPENAI_BASE_URL = process.env.OPENai_base_URL || process.env.OPENai_base_url
-  export const OPENAI_MODEL = process.env.openai_model
+export function getFreeClaudeAuthEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): FreeClaudeAuthEnv {
+  return {
+    apiKey: env.OPENAI_API_KEY || env.CODEX_API_KEY,
+    baseUrl: env.OPENAI_BASE_URL || env.OPENAI_API_BASE,
+    model: env.OPENAI_MODEL,
+  }
+}

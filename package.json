@@ -32,7 +32,7 @@
     "dev:code": "bun run profile:code && bun run dev:profile",
     "start": "node dist/cli.mjs",
     "test:provider-recommendation": "node --test --experimental-strip-types src/utils/providerRecommendation.test.ts src/utils/providerProfile.test.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ./node_modules/typescript/lib/tsc.js --noEmit",
     "smoke": "bun run build && node dist/cli.mjs --version",
     "test:provider": "bun test src/services/api/*.test.ts src/utils/context.test.ts",
     "doctor:runtime": "bun run scripts/system-check.ts",

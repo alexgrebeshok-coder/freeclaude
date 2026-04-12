@@ -50,6 +50,7 @@ import type { PermissionDecision } from '../../utils/permissions/PermissionResul
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
 import { validateInputForSettingsFileEdit } from '../../utils/settings/validateEditTool.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '../NotebookEditTool/constants.js'
+import { autoCommitFiles } from '../GitTool/gitToolUtils.js'
 import {
   FILE_EDIT_TOOL_NAME,
   FILE_UNEXPECTEDLY_MODIFIED_ERROR,
@@ -557,6 +558,8 @@ export const FileEditTool = buildTool({
       })
     }
 
+    const autoCommit = await autoCommitFiles([absoluteFilePath])
+
     // 8. Yield result
     const data = {
       filePath: file_path,
@@ -567,29 +570,46 @@ export const FileEditTool = buildTool({
       userModified: userModified ?? false,
       replaceAll: replace_all,
       ...(gitDiff && { gitDiff }),
+      ...(autoCommit.sha ? { autoCommitSha: autoCommit.sha } : {}),
+      ...(autoCommit.message ? { autoCommitMessage: autoCommit.message } : {}),
+      ...(!autoCommit.committed && autoCommit.reason
+        ? { autoCommitReason: autoCommit.reason }
+        : {}),
     }
     return {
       data,
     }
   },
   mapToolResultToToolResultBlockParam(data: FileEditOutput, toolUseID) {
-    const { filePath, userModified, replaceAll } = data
+    const {
+      autoCommitMessage,
+      autoCommitReason,
+      autoCommitSha,
+      filePath,
+      userModified,
+      replaceAll,
+    } = data
     const modifiedNote = userModified
       ? '.  The user modified your proposed changes before accepting them. '
       : ''
+    const autoCommitNote = autoCommitSha
+      ? ` Auto-commit: ${autoCommitSha}${autoCommitMessage ? ` ${autoCommitMessage}` : ''}.`
+      : autoCommitReason
+        ? ` Auto-commit skipped: ${autoCommitReason}.`
+        : ''
 
     if (replaceAll) {
       return {
         tool_use_id: toolUseID,
         type: 'tool_result',
-        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.`,
+        content: `The file ${filePath} has been updated${modifiedNote}. All occurrences were successfully replaced.${autoCommitNote}`,
       }
     }
 
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `The file ${filePath} has been updated successfully${modifiedNote}.`,
+      content: `The file ${filePath} has been updated successfully${modifiedNote}.${autoCommitNote}`,
     }
   },
 } satisfies ToolDef<ReturnType<typeof inputSchema>, FileEditOutput>)

@@ -13,14 +13,14 @@ import {
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
 import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import { execFileNoThrow } from './utils/execFileNoThrow.js'
-import { getBranch, getDefaultBranch, getIsGit, gitExe } from './utils/git.js'
+import { getDefaultBranch, getIsGit, gitExe } from './utils/git.js'
 import { shouldIncludeGitInstructions } from './utils/gitSettings.js'
 import { logError } from './utils/log.js'
-
-const MAX_STATUS_CHARS = 2000
+import { getGitPromptContext } from './tools/GitTool/gitToolUtils.js'
 
 // System prompt injection for cache breaking (ant-only, ephemeral debugging state)
 let systemPromptInjection: string | null = null
+const MAX_STATUS_CHARS = 2_000
 
 export function getSystemPromptInjection(): string | null {
   return systemPromptInjection
@@ -58,19 +58,9 @@ export const getGitStatus = memoize(async (): Promise<string | null> => {
 
   try {
     const gitCmdsStart = Date.now()
-    const [branch, mainBranch, status, log, userName] = await Promise.all([
-      getBranch(),
+    const [mainBranch, gitContext, userName] = await Promise.all([
       getDefaultBranch(),
-      execFileNoThrow(gitExe(), ['--no-optional-locks', 'status', '--short'], {
-        preserveOutputOnError: false,
-      }).then(({ stdout }) => stdout.trim()),
-      execFileNoThrow(
-        gitExe(),
-        ['--no-optional-locks', 'log', '--oneline', '-n', '5'],
-        {
-          preserveOutputOnError: false,
-        },
-      ).then(({ stdout }) => stdout.trim()),
+      getGitPromptContext(),
       execFileNoThrow(gitExe(), ['config', 'user.name'], {
         preserveOutputOnError: false,
       }).then(({ stdout }) => stdout.trim()),
@@ -78,29 +68,19 @@ export const getGitStatus = memoize(async (): Promise<string | null> => {
 
     logForDiagnosticsNoPII('info', 'git_commands_completed', {
       duration_ms: Date.now() - gitCmdsStart,
-      status_length: status.length,
+      status_length: gitContext?.length ?? 0,
     })
 
-    // Check if status exceeds character limit
-    const truncatedStatus =
-      status.length > MAX_STATUS_CHARS
-        ? status.substring(0, MAX_STATUS_CHARS) +
-          '\n... (truncated because it exceeds 2k characters. If you need more information, run "git status" using BashTool)'
-        : status
+    if (!gitContext) {
+      return null
+    }
 
     logForDiagnosticsNoPII('info', 'git_status_completed', {
       duration_ms: Date.now() - startTime,
-      truncated: status.length > MAX_STATUS_CHARS,
+      truncated: gitContext.length > MAX_STATUS_CHARS,
     })
 
-    return [
-      `This is the git status at the start of the conversation. Note that this status is a snapshot in time, and will not update during the conversation.`,
-      `Current branch: ${branch}`,
-      `Main branch (you will usually use this for PRs): ${mainBranch}`,
-      ...(userName ? [`Git user: ${userName}`] : []),
-      `Status:\n${truncatedStatus || '(clean)'}`,
-      `Recent commits:\n${log}`,
-    ].join('\n\n')
+    return `${gitContext}\n\nMain branch (you will usually use this for PRs): ${mainBranch}${userName ? `\n\nGit user: ${userName}` : ''}`
   } catch (error) {
     logForDiagnosticsNoPII('error', 'git_status_failed', {
       duration_ms: Date.now() - startTime,

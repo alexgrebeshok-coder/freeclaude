@@ -20,6 +20,10 @@ import {
   isVoiceStreamAvailable,
   type VoiceStreamConnection,
 } from '../services/voiceStreamSTT.js'
+import {
+  connectLocalVoiceMode,
+  isLocalVoiceModeRequested,
+} from '../services/voice/voiceMode.js'
 import { logForDebugging } from '../utils/debug.js'
 import { toError } from '../utils/errors.js'
 import { getSystemLocaleLanguage } from '../utils/intl.js'
@@ -202,6 +206,7 @@ export function useVoice({
   enabled,
   focusMode,
 }: UseVoiceOptions): UseVoiceReturn {
+  const useLocalVoiceMode = isLocalVoiceModeRequested()
   const [state, setState] = useState<VoiceState>('idle')
   const stateRef = useRef<VoiceState>('idle')
   const connectionRef = useRef<VoiceStreamConnection | null>(null)
@@ -377,6 +382,7 @@ export function useVoice({
         // backoff clears the same-pod rapid-reconnect race (same gap as the
         // early-error retry path below).
         if (
+          !useLocalVoiceMode &&
           finalizeSource === 'no_data_timeout' &&
           hadAudioSignal &&
           wsConnected &&
@@ -778,7 +784,10 @@ export function useVoice({
 
     const attemptConnect = (keyterms: string[]): void => {
       const myAttemptGen = attemptGenRef.current
-      void connectVoiceStream(
+      const connectVoiceBackend = useLocalVoiceMode
+        ? connectLocalVoiceMode
+        : connectVoiceStream
+      void connectVoiceBackend(
         {
           onTranscript: (text: string, isFinal: boolean) => {
             if (isStale()) return
@@ -974,10 +983,14 @@ export function useVoice({
             }
           },
         },
-        {
-          language: stt.code,
-          keyterms,
-        },
+        useLocalVoiceMode
+          ? {
+              language: stt.code,
+            }
+          : {
+              language: stt.code,
+              keyterms,
+            },
       ).then(conn => {
         if (isStale()) {
           conn?.close()
@@ -1007,7 +1020,11 @@ export function useVoice({
       })
     }
 
-    void getVoiceKeyterms().then(attemptConnect)
+    if (useLocalVoiceMode) {
+      attemptConnect([])
+    } else {
+      void getVoiceKeyterms().then(attemptConnect)
+    }
   }
 
   // ── Hold-to-talk handler ────────────────────────────────────────────
@@ -1021,7 +1038,7 @@ export function useVoice({
   // delay of ~500ms on macOS).
   const handleKeyEvent = useCallback(
     (fallbackMs = REPEAT_FALLBACK_MS): void => {
-      if (!enabled || !isVoiceStreamAvailable()) {
+      if (!enabled || (!useLocalVoiceMode && !isVoiceStreamAvailable())) {
         return
       }
 
@@ -1123,7 +1140,7 @@ export function useVoice({
         )
       }
     },
-    [enabled, focusMode, cleanup],
+    [enabled, focusMode, cleanup, useLocalVoiceMode],
   )
 
   // Cleanup only when disabled or unmounted - NOT on state changes

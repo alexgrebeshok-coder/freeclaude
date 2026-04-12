@@ -13,11 +13,11 @@ import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { clearMcpClientConfig, clearServerTokensFromLocalStorage, getMcpClientConfig, readClientSecret, saveMcpClientSecret } from '../../services/mcp/auth.js';
 import { connectToServer, getMcpServerConnectionBatchSize } from '../../services/mcp/client.js';
-import { addMcpConfig, getAllMcpConfigs, getMcpConfigByName, getMcpConfigsByScope, removeMcpConfig } from '../../services/mcp/config.js';
+import { addMcpConfig, getAllMcpConfigs, getMcpConfigByName, getMcpConfigsByScope, getStoredUserMcpConfigs, removeMcpConfig } from '../../services/mcp/config.js';
 import type { ConfigScope, ScopedMcpServerConfig } from '../../services/mcp/types.js';
 import { describeMcpConfigFilePath, ensureConfigScope, getScopeLabel } from '../../services/mcp/utils.js';
 import { AppStateProvider } from '../../state/AppState.js';
-import { getCurrentProjectConfig, getGlobalConfig, saveCurrentProjectConfig } from '../../utils/config.js';
+import { getCurrentProjectConfig, saveCurrentProjectConfig } from '../../utils/config.js';
 import { isFsInaccessible } from '../../utils/errors.js';
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js';
 import { safeParseJSON } from '../../utils/json.js';
@@ -97,19 +97,21 @@ export async function mcpRemoveHandler(name: string, options: {
 
     // If no scope specified, check where the server exists
     const projectConfig = getCurrentProjectConfig();
-    const globalConfig = getGlobalConfig();
 
     // Check if server exists in project scope (.mcp.json)
     const {
       servers: projectServers
     } = getMcpConfigsByScope('project');
+    const {
+      servers: userServers
+    } = getStoredUserMcpConfigs();
     const mcpJsonExists = !!projectServers[name];
 
     // Count how many scopes contain this server
     const scopes: Array<Exclude<ConfigScope, 'dynamic'>> = [];
     if (projectConfig.mcpServers?.[name]) scopes.push('local');
     if (mcpJsonExists) scopes.push('project');
-    if (globalConfig.mcpServers?.[name]) scopes.push('user');
+    if (userServers[name]) scopes.push('user');
     if (scopes.length === 0) {
       cliError(`No MCP server found with name: "${name}"`);
     } else if (scopes.length === 1) {

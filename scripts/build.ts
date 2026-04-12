@@ -8,7 +8,7 @@
  * - src/ path aliases
  */
 
-import { readFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
 import { noTelemetryPlugin } from './no-telemetry-plugin'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
@@ -17,7 +17,7 @@ const version = pkg.version
 // Feature flags — all disabled for the open build.
 // These gate Anthropic-internal features (voice, proactive, kairos, etc.)
 const featureFlags: Record<string, boolean> = {
-  VOICE_MODE: false,
+  VOICE_MODE: true,
   PROACTIVE: false,
   KAIROS: false,
   BRIDGE_MODE: false,
@@ -50,7 +50,7 @@ const result = await Bun.build({
   splitting: false,
   sourcemap: 'external',
   minify: false,
-  naming: 'cli.mjs',
+  naming: 'cli.bundle.mjs',
   define: {
     // MACRO.* build-time constants
     // Keep the internal compatibility version high enough to pass
@@ -292,5 +292,18 @@ if (!result.success) {
   }
   process.exit(1)
 }
+
+writeFileSync(
+  './dist/cli.mjs',
+  `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.length === 1 && (args[0] === '--version' || args[0] === '-v' || args[0] === '-V')) {
+  console.log(${JSON.stringify(`${version} (FreeClaude)`)});
+  process.exit(0);
+}
+await import('./cli.bundle.mjs');
+`,
+  { mode: 0o755 },
+)
 
 console.log(`✓ Built openclaude v${version} → dist/cli.mjs`)
