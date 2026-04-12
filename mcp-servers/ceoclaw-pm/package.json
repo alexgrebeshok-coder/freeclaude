@@ -1,0 +1,20 @@
+{
+  "name": "ceoclaw-pm-mcp",
+  "version": "1.0.0",
+  "description": "FreeClaude MCP Server — CEOClaw Project Management (EVM, CPI, SPI, tasks)",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --import tsx src/index.ts",
+    "dev": "node --import tsx --watch src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0"
+  }
+}
