@@ -450,8 +450,11 @@ async function* openaiStreamToAnthropic(
         const delta = choice.delta
 
         // Text content — use != null to distinguish absent field from empty string,
-        // some providers send "" as first delta to signal streaming start
-        if (delta.content != null) {
+        // some providers send "" as first delta to signal streaming start.
+        // Also handle reasoning_content (ZAI GLM-5, DeepSeek-R1) which some providers
+        // return instead of content.
+        const textContent = delta.content ?? (delta as Record<string, unknown>).reasoning_content as string | null | undefined
+        if (textContent != null) {
           if (!hasEmittedContentStart) {
             yield {
               type: 'content_block_start',
@@ -463,7 +466,7 @@ async function* openaiStreamToAnthropic(
           yield {
             type: 'content_block_delta',
             index: contentBlockIndex,
-            delta: { type: 'text_delta', text: delta.content },
+            delta: { type: 'text_delta', text: textContent },
           }
         }
 
@@ -1085,8 +1088,12 @@ class OpenAIShimMessages {
     const choice = data.choices?.[0]
     const content: Array<Record<string, unknown>> = []
 
-    if (choice?.message?.content) {
-      content.push({ type: 'text', text: choice.message.content })
+    // Handle reasoning_content (ZAI GLM-5, DeepSeek-R1) — some providers
+    // return reasoning_content instead of content in the final message.
+    const messageContent = choice?.message?.content
+      ?? (choice?.message as Record<string, unknown>)?.reasoning_content as string | null | undefined
+    if (messageContent) {
+      content.push({ type: 'text', text: messageContent })
     }
 
     if (choice?.message?.tool_calls) {
