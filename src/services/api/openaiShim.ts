@@ -709,6 +709,16 @@ class OpenAIShimMessages {
         }
       }
       let currentProvider = chain.getCurrent()
+
+      // FreeClaude: if /model changed env vars, reload chain to pick up activeProvider
+      const envBase = process.env.OPENAI_BASE_URL
+      const envModel = process.env.OPENAI_MODEL
+      if (envBase && envModel && currentProvider &&
+          (currentProvider.baseUrl !== envBase || currentProvider.model !== envModel)) {
+        chain.loadProviders()
+        currentProvider = chain.getCurrent()
+      }
+
       let lastError: Error | null = null
       const maxAttempts = chain.getProviders().length
       let startTime = 0

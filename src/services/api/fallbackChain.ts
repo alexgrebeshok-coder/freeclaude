@@ -118,9 +118,21 @@ export class FallbackChain {
     this.loadProviders()
   }
 
+  /**
+   * FreeClaude: switch to a specific provider by name (immediate, in-session).
+   * Moves the target provider to the front of the chain.
+   */
+  setCurrentByName(name: string): boolean {
+    const idx = this.providers.findIndex(p => p.name === name)
+    if (idx < 0) return false
+    const [target] = this.providers.splice(idx, 1)
+    this.providers.unshift(target)
+    return true
+  }
+
   // ---- Loading ----
 
-  private loadProviders(): void {
+  loadProviders(): void {
     if (existsSync(CONFIG_PATH)) {
       try {
         const raw = readFileSync(CONFIG_PATH, 'utf-8')
@@ -135,6 +147,17 @@ export class FallbackChain {
               markedDownAt: null,
             }))
             .sort((a: ProviderRuntime, b: ProviderRuntime) => a.priority - b.priority)
+
+          // FreeClaude: put activeProvider first so getCurrent() returns it
+          if (config.activeProvider) {
+            const activeIdx = this.providers.findIndex(
+              (p: ProviderRuntime) => p.name === config.activeProvider,
+            )
+            if (activeIdx > 0) {
+              const [active] = this.providers.splice(activeIdx, 1)
+              this.providers.unshift(active)
+            }
+          }
 
           this.enabled = true
           this.log('info', `Loaded ${this.providers.length} providers from ${CONFIG_PATH}`)

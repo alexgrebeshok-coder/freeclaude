@@ -28,6 +28,34 @@ import { getShellHistoryCompletion } from '../utils/suggestions/shellHistoryComp
 import { getSlackChannelSuggestions, hasSlackMcpServer } from '../utils/suggestions/slackChannelSuggestions.js';
 import { TEAM_LEAD_NAME } from '../utils/swarm/constants.js';
 import { applyFileSuggestion, findLongestCommonPrefix, onIndexBuildComplete, startBackgroundCacheRefresh } from './fileSuggestions.js';
+
+// FreeClaude: generate provider suggestions for /model command
+function generateProviderSuggestions(filter?: string): SuggestionItem[] {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const os = require('node:os');
+  const configPath = path.join(os.homedir(), '.freeclaude.json');
+  try {
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(raw);
+    const providers = config.providers || [];
+    const lowerFilter = (filter || '').toLowerCase().trim();
+    return providers
+      .map((p, i) => ({
+        id: `model-provider-${i}`,
+        displayText: `${i + 1}. ${p.name}`,
+        description: p.model,
+        tag: p.priority === 1 ? 'default' : undefined,
+      }))
+      .filter(p => {
+        if (!lowerFilter) return true;
+        return p.displayText.toLowerCase().includes(lowerFilter) ||
+               p.description.toLowerCase().includes(lowerFilter);
+      });
+  } catch {
+    return [];
+  }
+}
 import { generateUnifiedSuggestions } from './unifiedSuggestions.js';
 
 // Unicode-aware character class for file path tokens:
@@ -746,6 +774,22 @@ export function useTypeahead({
         // If input has a space after the command, don't show suggestions
         // This prevents Enter from selecting a different command after Tab completion
         if (spaceIndex !== -1) {
+          // FreeClaude: /model command shows provider suggestions after space
+          if (commandName === 'model' && !hasRealArguments) {
+            const argText = value.slice(spaceIndex + 1).trim();
+            const providerSuggestions = generateProviderSuggestions(argText);
+            if (providerSuggestions.length > 0) {
+              setSuggestionsState(() => ({
+                commandArgumentHint: undefined,
+                suggestions: providerSuggestions,
+                selectedSuggestion: providerSuggestions.length > 0 ? 0 : -1
+              }));
+              setSuggestionType('model-provider');
+              setMaxColumnWidth(undefined);
+              return;
+            }
+          }
+
           const exactMatch = commands.find(cmd => getCommandName(cmd) === commandName);
           if (exactMatch || hasRealArguments) {
             // Priority 1: Static argumentHint (only on first trailing space for backwards compat)
@@ -793,6 +837,23 @@ export function useTypeahead({
       debouncedFetchFileSuggestions.cancel();
       clearSuggestions();
     } else if (isCommandInput(value) && hasCommandWithArguments(isAtEndWithWhitespace, value)) {
+      // FreeClaude: /model with arguments — show filtered provider suggestions
+      const spaceIdx = value.indexOf(' ');
+      const cmdName = spaceIdx !== -1 ? value.slice(1, spaceIdx) : value.slice(1);
+      if (cmdName === 'model') {
+        const argText = value.slice(spaceIdx + 1).trim();
+        const providerSuggestions = generateProviderSuggestions(argText);
+        if (providerSuggestions.length > 0) {
+          setSuggestionsState(() => ({
+            commandArgumentHint: undefined,
+            suggestions: providerSuggestions,
+            selectedSuggestion: providerSuggestions.length > 0 ? 0 : -1
+          }));
+          setSuggestionType('model-provider');
+          setMaxColumnWidth(undefined);
+          return;
+        }
+      }
       // If we have a command with arguments (no trailing space), clear any stale hint
       // This prevents the hint from flashing when transitioning between states
       setSuggestionsState(prev => prev.commandArgumentHint ? {
@@ -1220,6 +1281,16 @@ export function useTypeahead({
 
         debouncedFetchFileSuggestions.cancel();
         clearSuggestions();
+      }
+    // FreeClaude: handle /model provider selection — submit /model N
+    } else if (suggestionType === 'model-provider' && selectedSuggestion < suggestions.length) {
+      if (suggestion) {
+        const providerNum = parseInt(suggestion.id.replace('model-provider-', '')) + 1;
+        const newInput = `/model ${providerNum}`;
+        onInputChange(newInput);
+        setCursorOffset(newInput.length);
+        clearSuggestions();
+        onSubmit(newInput, true);
       }
     }
   }, [suggestions, selectedSuggestion, suggestionType, commands, input, cursorOffset, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, debouncedFetchFileSuggestions, debouncedFetchSlackChannels]);

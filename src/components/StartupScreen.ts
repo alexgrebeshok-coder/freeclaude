@@ -1,8 +1,6 @@
 /**
- * OpenClaude startup screen — filled-block text logo with sunset gradient.
+ * FreeClaude startup screen — filled-block text logo with sunset gradient.
  * Called once at CLI startup before the Ink UI renders.
- *
- * Addresses: https://github.com/Gitlawb/openclaude/issues/55
  */
 
 declare const MACRO: { VERSION: string; DISPLAY_VERSION?: string }
@@ -43,72 +41,89 @@ function paintLine(text: string, stops: RGB[], lineT: number): string {
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
 const SUNSET_GRAD: RGB[] = [
-  [255, 180, 100],
-  [240, 140, 80],
-  [217, 119, 87],
-  [193, 95, 60],
-  [160, 75, 55],
-  [130, 60, 50],
+  [240, 160, 48],
+  [232, 140, 60],
+  [220, 120, 55],
+  [200, 100, 50],
+  [170, 80, 50],
+  [140, 65, 45],
 ]
 
-const ACCENT: RGB = [240, 148, 100]
-const CREAM: RGB = [220, 195, 170]
+const ACCENT: RGB = [240, 160, 48]
+const GREEN: RGB = [48, 208, 144]
+const CREAM: RGB = [224, 208, 192]
 const DIMCOL: RGB = [120, 100, 82]
 const BORDER: RGB = [100, 80, 65]
 
-// ─── Filled Block Text Logo ───────────────────────────────────────────────────
+// ─── FreeClaude Logo ────────────────────────────────────────────────────────
 
-const LOGO_OPEN = [
-  `  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557  \u2588\u2588\u2557`,
-  `  \u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2551 \u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2551 \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u2550\u255d \u2588\u2588\u2588\u2557 \u2588\u2588\u2551`,
-  `  \u2588\u2588\u2551   \u2588\u2588\u2551 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551 \u2588\u2588\u2588\u2588\u2588\u2588\u2557   \u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551`,
-  `  \u2588\u2588\u2551   \u2588\u2588\u2551 \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u2550\u255d \u2588\u2588\u2554\u2550\u2550\u2550\u255d   \u2588\u2588\u2554\u2588\u2588\u2588\u2588\u2551`,
-  `  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551 \u2588\u2588\u2551       \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2551 \u255a\u2588\u2588\u2588\u2551`,
-  `  \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u255d       \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u255d  \u255a\u2550\u2550\u255d`,
+const LOGO_FREE = [
+  `______ _____ `,
+  `|  ____/ ____|`,
+  `| |__ | |     `,
+  `|  __|| |     `,
+  `| |   | |____ `,
+  `|_|    \\_____|`,
 ]
 
-const LOGO_CLAUDE = [
-  `  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557      \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557   \u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557`,
-  `  \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u2550\u255d \u2588\u2588\u2551      \u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2551 \u2588\u2588\u2551   \u2588\u2588\u2551 \u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2551 \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u2550\u255d`,
-  `  \u2588\u2588\u2551       \u2588\u2588\u2551      \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551 \u2588\u2588\u2551   \u2588\u2588\u2551 \u2588\u2588\u2551   \u2588\u2588\u2551 \u2588\u2588\u2588\u2588\u2588\u2588\u2557  `,
-  `  \u2588\u2588\u2551       \u2588\u2588\u2551      \u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2551 \u2588\u2588\u2551   \u2588\u2588\u2551 \u2588\u2588\u2551   \u2588\u2588\u2551 \u2588\u2588\u2554\u2550\u2550\u2550\u255d  `,
-  `  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551   \u2588\u2588\u2551 \u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557`,
-  `  \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u255d   \u255a\u2550\u255d  \u255a\u2550\u2550\u2550\u2550\u2550\u255d  \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d`,
-]
+// ─── Provider detection (reads from ~/.freeclaude.json) ──────────────────────
 
-// ─── Provider detection ───────────────────────────────────────────────────────
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
-function detectProvider(): { name: string; model: string; baseUrl: string; isLocal: boolean } {
-  const useGemini = process.env.CLAUDE_CODE_USE_GEMINI === '1' || process.env.CLAUDE_CODE_USE_GEMINI === 'true'
-  const useOpenAI = process.env.CLAUDE_CODE_USE_OPENAI === '1' || process.env.CLAUDE_CODE_USE_OPENAI === 'true'
+interface ConfigProvider {
+  name: string
+  baseUrl: string
+  apiKey: string
+  model: string
+  priority: number
+  timeout: number
+}
 
-  if (useGemini) {
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
-    const baseUrl = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai'
-    return { name: 'Google Gemini', model, baseUrl, isLocal: false }
+function detectProvider(): { name: string; model: string; baseUrl: string; isLocal: boolean; label: string } {
+  const configPath = join(homedir(), '.freeclaude.json')
+
+  if (existsSync(configPath)) {
+    try {
+      const raw = readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(raw)
+      if (Array.isArray(config.providers) && config.providers.length > 0) {
+        const sorted = [...config.providers].sort((a: ConfigProvider, b: ConfigProvider) => a.priority - b.priority)
+        for (const p of sorted) {
+          let apiKey = p.apiKey
+          if (typeof apiKey === 'string' && apiKey.startsWith('env:')) {
+            apiKey = process.env[apiKey.slice(4)] || ''
+          }
+          if (apiKey) {
+            const isLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(p.baseUrl)
+            const label = isLocal ? 'local' : 'free'
+            return {
+              name: p.name,
+              model: p.model,
+              baseUrl: p.baseUrl,
+              isLocal,
+              label,
+            }
+          }
+        }
+      }
+    } catch {
+      // fall through
+    }
   }
 
-  if (useOpenAI) {
-    const model = process.env.OPENAI_MODEL || 'gpt-4o'
-    const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
-    const isLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(baseUrl)
-    let name = 'OpenAI'
-    if (/deepseek/i.test(baseUrl) || /deepseek/i.test(model))       name = 'DeepSeek'
-    else if (/openrouter/i.test(baseUrl))                             name = 'OpenRouter'
-    else if (/together/i.test(baseUrl))                               name = 'Together AI'
-    else if (/groq/i.test(baseUrl))                                   name = 'Groq'
-    else if (/mistral/i.test(baseUrl) || /mistral/i.test(model))     name = 'Mistral'
-    else if (/azure/i.test(baseUrl))                                  name = 'Azure OpenAI'
-    else if (/localhost:11434/i.test(baseUrl))                        name = 'Ollama'
-    else if (/localhost:1234/i.test(baseUrl))                         name = 'LM Studio'
-    else if (/llama/i.test(model))                                    name = 'Meta Llama'
-    else if (isLocal)                                                  name = 'Local'
-    return { name, model, baseUrl, isLocal }
-  }
+  // Fallback to env vars
+  const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
+  const model = process.env.OPENAI_MODEL || 'gpt-4o'
+  const isLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(baseUrl)
+  let name = 'OpenAI'
+  if (/z\.ai/i.test(baseUrl)) name = 'ZAI'
+  else if (/deepseek/i.test(baseUrl)) name = 'DeepSeek'
+  else if (/openrouter/i.test(baseUrl)) name = 'OpenRouter'
+  else if (/localhost:11434/i.test(baseUrl)) name = 'Ollama'
 
-  // Default: Anthropic
-  const model = process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL || 'claude-sonnet-4-6'
-  return { name: 'Anthropic', model, baseUrl: 'https://api.anthropic.com', isLocal: false }
+  return { name, model, baseUrl, isLocal, label: isLocal ? 'local' : 'cloud' }
 }
 
 // ─── Box drawing ──────────────────────────────────────────────────────────────
@@ -131,21 +146,16 @@ export function printStartupScreen(): void {
   out.push('')
 
   // Gradient logo
-  const allLogo = [...LOGO_OPEN, '', ...LOGO_CLAUDE]
-  const total = allLogo.length
+  const total = LOGO_FREE.length
   for (let i = 0; i < total; i++) {
     const t = total > 1 ? i / (total - 1) : 0
-    if (allLogo[i] === '') {
-      out.push('')
-    } else {
-      out.push(paintLine(allLogo[i], SUNSET_GRAD, t))
-    }
+    out.push(`  ${rgb(...ACCENT)}${LOGO_FREE[i]}${RESET}`)
   }
 
   out.push('')
 
   // Tagline
-  out.push(`  ${rgb(...ACCENT)}\u2726${RESET} ${rgb(...CREAM)}Any model. Every tool. Zero limits.${RESET} ${rgb(...ACCENT)}\u2726${RESET}`)
+  out.push(`  ${rgb(...ACCENT)}\u2726${RESET} ${rgb(...CREAM)}Free AI coding assistant \u2014 any model, zero cost${RESET} ${rgb(...ACCENT)}\u2726${RESET}`)
   out.push('')
 
   // Provider info box
@@ -156,8 +166,8 @@ export function printStartupScreen(): void {
     return [` ${DIM}${rgb(...DIMCOL)}${padK}${RESET} ${rgb(...c)}${v}${RESET}`, ` ${padK} ${v}`.length]
   }
 
-  const provC: RGB = p.isLocal ? [130, 175, 130] : ACCENT
-  let [r, l] = lbl('Provider', p.name, provC)
+  const provC: RGB = p.isLocal ? GREEN : ACCENT
+  let [r, l] = lbl('Provider', `${p.name} (${p.label})`, provC)
   out.push(boxRow(r, W, l))
   ;[r, l] = lbl('Model', p.model)
   out.push(boxRow(r, W, l))
@@ -167,15 +177,17 @@ export function printStartupScreen(): void {
 
   out.push(`${rgb(...BORDER)}\u2560${'\u2550'.repeat(W - 2)}\u2563${RESET}`)
 
-  const sC: RGB = p.isLocal ? [130, 175, 130] : ACCENT
-  const sL = p.isLocal ? 'local' : 'cloud'
-  const sRow = ` ${rgb(...sC)}\u25cf${RESET} ${DIM}${rgb(...DIMCOL)}${sL}${RESET}    ${DIM}${rgb(...DIMCOL)}Ready \u2014 type ${RESET}${rgb(...ACCENT)}/help${RESET}${DIM}${rgb(...DIMCOL)} to begin${RESET}`
-  const sLen = ` \u25cf ${sL}    Ready \u2014 type /help to begin`.length
+  const sC: RGB = GREEN
+  const sRow = ` ${rgb(...sC)}\u25cf${RESET} ${DIM}${rgb(...DIMCOL)}Ready${RESET}    ${DIM}${rgb(...DIMCOL)}Type ${RESET}${rgb(...ACCENT)}/help${RESET}${DIM}${rgb(...DIMCOL)} to begin \u00b7 ${RESET}${rgb(...ACCENT)}/model${RESET}${DIM}${rgb(...DIMCOL)} to switch${RESET}`
+  const sLen = ` \u25cf Ready    Type /help to begin \u00b7 /model to switch`.length
   out.push(boxRow(sRow, W, sLen))
 
   out.push(`${rgb(...BORDER)}\u255a${'\u2550'.repeat(W - 2)}\u255d${RESET}`)
   out.push(`  ${DIM}${rgb(...DIMCOL)}freeclaude ${RESET}${rgb(...ACCENT)}v${MACRO.DISPLAY_VERSION ?? MACRO.VERSION}${RESET}`)
   out.push('')
+
+  // Set terminal title
+  process.stdout.write('\x1b]0;FreeClaude\x07')
 
   process.stdout.write(out.join('\n') + '\n')
 }

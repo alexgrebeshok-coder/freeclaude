@@ -65,6 +65,7 @@ import recall from './commands/recall/index.js'
 import forget from './commands/forget/index.js'
 import memories from './commands/memories/index.js'
 import providers from './commands/providers/index.js'
+import modelCmd from './commands/model/index.js'
 import cost from './commands/cost/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
@@ -659,6 +660,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   forget, // Delete memory
   memories, // List all memories
   providers, // Show provider config and test connectivity
+  modelCmd, // Switch active model/provider
   cost, // Cost tracking summary
   copy, // Copy last message
   btw, // Quick note
