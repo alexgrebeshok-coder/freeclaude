@@ -64,6 +64,7 @@ import remember from './commands/remember/index.js'
 import recall from './commands/recall/index.js'
 import forget from './commands/forget/index.js'
 import memories from './commands/memories/index.js'
+import daily from './commands/daily/index.js'
 import providers from './commands/providers/index.js'
 import modelCmd from './commands/model/index.js'
 import cost from './commands/cost/index.js'
@@ -337,6 +338,7 @@ const COMMANDS = memoize((): Command[] => [
   recall,
   forget,
   memories,
+  daily,
   usage,
   usageReport,
   vim,
@@ -659,6 +661,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   recall, // Retrieve memory
   forget, // Delete memory
   memories, // List all memories
+  daily, // Daily notes
   providers, // Show provider config and test connectivity
   modelCmd, // Switch active model/provider
   cost, // Cost tracking summary

@@ -4,10 +4,20 @@ import { recall as recallEntry, search, type MemoryEntry } from '../../services/
 export const call: LocalCommandCall = async (args) => {
   const trimmed = args.trim()
 
-  if (!trimmed) {
+  if (!trimmed || trimmed === 'help') {
     return {
       type: 'text',
-      value: 'Usage: /recall <key|query>\n\nSearches by key, value, or tags.',
+      value: [
+        'Usage: /recall <key|query>',
+        '',
+        'Searches memories by key, value, or tags.',
+        'If Ollama is running with nomic-embed-text, also does semantic search.',
+        '',
+        'Examples:',
+        '  /recall name          — exact key match',
+        '  /recall project       — search by key/value/tags',
+        '  /recall что мы делали — semantic search (if Ollama available)',
+      ].join('\n'),
     }
   }
 
@@ -17,8 +27,35 @@ export const call: LocalCommandCall = async (args) => {
     return formatEntry(exact)
   }
 
-  // Fuzzy search
+  // Keyword search
   const results = search(trimmed)
+
+  // Try semantic search if available
+  let semanticResults: Array<{ key: string; value: string; score: number }> = []
+  try {
+    const { isOllamaAvailable, semanticSearch } = await import('../../services/memory/semanticSearch.js')
+    if (await isOllamaAvailable()) {
+      semanticResults = await semanticSearch(trimmed, 3)
+    }
+  } catch {
+    // Semantic search not available — use keyword results only
+  }
+
+  // Merge results (keyword first, then semantic if not duplicate)
+  const seenKeys = new Set(results.map(r => r.key))
+  for (const sr of semanticResults) {
+    if (!seenKeys.has(sr.key)) {
+      results.push({
+        key: sr.key,
+        value: sr.value,
+        createdAt: '',
+        updatedAt: '',
+        tags: [],
+      } as MemoryEntry)
+      seenKeys.add(sr.key)
+    }
+  }
+
   if (results.length === 0) {
     return {
       type: 'text',
@@ -31,10 +68,13 @@ export const call: LocalCommandCall = async (args) => {
   }
 
   // Multiple results
-  const lines = [`Found ${results.length} memories matching "${trimmed}":`, '']
+  const hasSemantic = semanticResults.length > 0
+  const lines = [`Found ${results.length} memories matching "${trimmed}"${hasSemantic ? ' (semantic)' : ''}:`, '']
   for (const entry of results) {
     const tags = entry.tags?.length ? ` [${entry.tags.join(', ')}]` : ''
-    lines.push(`  🔑 ${entry.key}${tags}`)
+    const semScore = semanticResults.find(s => s.key === entry.key)
+    const scoreStr = semScore ? ` (${(semScore.score * 100).toFixed(0)}%)` : ''
+    lines.push(`  🔑 ${entry.key}${tags}${scoreStr}`)
     lines.push(`     ${entry.value.length > 60 ? entry.value.slice(0, 57) + '...' : entry.value}`)
     lines.push('')
   }
@@ -47,7 +87,7 @@ export const call: LocalCommandCall = async (args) => {
 
 function formatEntry(entry: MemoryEntry): { type: 'text'; value: string } {
   const tags = entry.tags?.length ? `\n   Tags: ${entry.tags.join(', ')}` : ''
-  const updated = `\n   Updated: ${new Date(entry.updatedAt).toLocaleString()}`
+  const updated = entry.updatedAt ? `\n   Updated: ${new Date(entry.updatedAt).toLocaleString()}` : ''
 
   return {
     type: 'text',

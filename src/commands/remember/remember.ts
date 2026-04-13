@@ -37,6 +37,11 @@ export const call: LocalCommandCall = async (args) => {
 
   const entry: MemoryEntry = remember(key!, value!, tags)
 
+  // Auto-index for semantic search (async, non-blocking)
+  import('../../services/memory/semanticSearch.js').then(({ indexMemory }) => {
+    indexMemory(key!, value!).catch(() => {})
+  }).catch(() => {})
+
   const tagStr = tags?.length ? ` [${tags.join(', ')}]` : ''
   return {
     type: 'text',
