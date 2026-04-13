@@ -694,6 +694,17 @@ class OpenAIShimMessages {
         }
       }
 
+      // Auto-load daily notes and memory into system prompt
+      try {
+        const { loadSessionContext } = await import('../memory/sessionContext.js')
+        const sessionMemory = await loadSessionContext()
+        if (sessionMemory) {
+          enrichedContext = sessionMemory + (enrichedContext ? '\n\n' + enrichedContext : '')
+        }
+      } catch {
+        // Non-critical
+      }
+
       // Inject enriched context into system message if found
       if (enrichedContext) {
         const msgs = Array.isArray(params.messages) ? [...params.messages] : params.messages
@@ -797,6 +808,29 @@ class OpenAIShimMessages {
 
           // Record latency for health tracking
           recordLatency(currentProvider.name, durationMs, true)
+
+          // Log conversation to daily notes (non-blocking, best-effort)
+          try {
+            const { logUserMessage, logAssistantMessage } = await import('../memory/conversationLogger.js')
+            // Extract last user message
+            const lastUser = Array.isArray(params.messages)
+              ? params.messages
+                  ?.filter((m: Record<string, unknown>) => m.role === 'user')
+                  .pop()
+              : undefined
+            if (lastUser) {
+              const userText = typeof lastUser.content === 'string'
+                ? lastUser.content
+                : JSON.stringify(lastUser.content ?? '')
+              logUserMessage(userText)
+            }
+            // Extract assistant response
+            if (typeof completionText === 'string' && completionText.length > 0) {
+              logAssistantMessage(completionText)
+            }
+          } catch {
+            // Non-critical — silently skip logging
+          }
 
           return result
         } catch (error) {

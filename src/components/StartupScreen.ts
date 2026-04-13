@@ -88,24 +88,40 @@ function detectProvider(): { name: string; model: string; baseUrl: string; isLoc
     try {
       const raw = readFileSync(configPath, 'utf-8')
       const config = JSON.parse(raw)
-      if (Array.isArray(config.providers) && config.providers.length > 0) {
+
+      // Use activeProvider if set, otherwise fall back to priority sort
+      let targetProvider: ConfigProvider | undefined
+
+      if (config.activeProvider) {
+        targetProvider = config.providers?.find(
+          (p: ConfigProvider) => p.name === config.activeProvider
+        )
+        // Override model if activeModel is set
+        if (targetProvider && config.activeModel) {
+          targetProvider = { ...targetProvider, model: config.activeModel }
+        }
+      }
+
+      if (!targetProvider && Array.isArray(config.providers) && config.providers.length > 0) {
         const sorted = [...config.providers].sort((a: ConfigProvider, b: ConfigProvider) => a.priority - b.priority)
-        for (const p of sorted) {
+        targetProvider = sorted.find((p: ConfigProvider) => {
           let apiKey = p.apiKey
           if (typeof apiKey === 'string' && apiKey.startsWith('env:')) {
             apiKey = process.env[apiKey.slice(4)] || ''
           }
-          if (apiKey) {
-            const isLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(p.baseUrl)
-            const label = isLocal ? 'local' : 'free'
-            return {
-              name: p.name,
-              model: p.model,
-              baseUrl: p.baseUrl,
-              isLocal,
-              label,
-            }
-          }
+          return !!apiKey
+        })
+      }
+
+      if (targetProvider) {
+        const isLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(targetProvider.baseUrl)
+        const label = isLocal ? 'local' : 'free'
+        return {
+          name: targetProvider.name,
+          model: targetProvider.model,
+          baseUrl: targetProvider.baseUrl,
+          isLocal,
+          label,
         }
       }
     } catch {
