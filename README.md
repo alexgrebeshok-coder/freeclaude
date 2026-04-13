@@ -67,16 +67,68 @@ node dist/cli.mjs
 | 💰 **DeepSeek** | Cheap | deepseek-chat, deepseek-r1 | ✅ |
 | 🔧 **Any OpenAI-compatible** | — | any model | ✅ |
 
+### Управление провайдерами и моделями
+
+**Просмотр и переключение:**
+```
+/model                      — список всех провайдеров
+/model 1                    — переключиться на провайдера #1
+/model openrouter           — переключиться по имени
+/model openrouter anthropic/claude-sonnet-4   — сменить модель внутри провайдера
+```
+
+**Добавление провайдеров:**
+```
+/setup                      — главное меню (категории и список)
+/setup free                 — показать бесплатные провайдеры
+/setup local                — локальные (Ollama, LM Studio)
+/setup paid                 — платные (OpenAI, DeepSeek)
+/setup router               — роутеры (OpenRouter — 200+ моделей)
+/setup ollama               — быстрое добавление Ollama
+/setup openrouter           — быстрое добавление OpenRouter (ключ из env)
+/setup zai                  — быстрое добавление ZAI (ключ из env)
+/setup add 2 API_KEY        — добавить провайдера #2 с ключом
+/setup remove 2             — удалить провайдера #2
+```
+
+**Тест подключения:**
+```
+/providers test             — пинг всех провайдеров (latency)
+```
+
+### Бесплатные провайдеры
+
+| Провайдер | Ключ | Регистрация | Скорость |
+|-----------|------|-------------|----------|
+| 🇷🇺 ZAI (GLM-5) | `ZAI_API_KEY` | [open.bigmodel.cn](https://open.bigmodel.cn/) | ~15с (reasoning) |
+| 🇺🇸 Google Gemini | `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com/apikey) | ~3с |
+| ⚡ Groq | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com/keys) | ~1с |
+| 🚀 Cerebras | `CEREBRAS_API_KEY` | [cloud.cerebras.ai](https://cloud.cerebras.ai) | ~0.5с |
+| 🇨🇳 Qwen/DashScope | `DASHSCOPE_API_KEY` | [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com/) | ~3с |
+| 🏠 Ollama (local) | Не нужен | `ollama pull qwen2.5:7b` | ~1-2с |
+| 🔀 OpenRouter | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai/keys) | зависит от модели |
+
+**Как подключить (пример OpenRouter):**
+```bash
+# 1. Получить ключ на openrouter.ai/keys
+# 2. Добавить в ~/.zshrc
+echo 'export OPENROUTER_API_KEY=sk-or-твой-ключ' >> ~/.zshrc
+source ~/.zshrc
+# 3. В FreeClaude:
+/setup openrouter
+/model openrouter anthropic/claude-sonnet-4
+```
+
 ### Slash Commands
 
 | Команда | Описание |
 |---------|----------|
+| `/model` | Переключить провайдера/модель |
+| `/setup` | Добавить/удалить провайдера |
 | `/commit` | AI-коммит с анализом изменений |
 | `/diff` | Просмотр незакоммиченных изменений |
 | `/undo [N]` | Откат последних N коммитов (soft reset) |
 | `/repo-map` | Обзор структуры репозитория |
-| `/setup` | Автоматическое обнаружение провайдеров |
-| `/providers` | Статус провайдеров с тестом коннективности |
 | `/providers test` | Пинг всех провайдеров (latency) |
 | `/cost` | Статистика стоимости (today/week/month) |
 | `/remember <key> <value>` | Сохранить факт в память |
