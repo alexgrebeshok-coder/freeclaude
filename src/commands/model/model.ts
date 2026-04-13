@@ -98,11 +98,30 @@ export const call: LocalCommandCall = async (args) => {
     }
   }
 
-  // Switch provider
+  // Switch provider or model
   if (trimmed !== '') {
     const num = parseInt(trimmed)
     if (!isNaN(num) && num >= 1 && num <= providers.length) {
       return switchProvider(config, providers, num - 1)
+    }
+
+    // /model provider model-id — switch model within a provider
+    // e.g. /model openrouter anthropic/claude-sonnet-4
+    // e.g. /model openrouter google/gemini-2.5-flash
+    // e.g. /model openrouter minimax/minimax-m2.5:free
+    // First word = provider name, rest = model id
+    const parts = trimmed.split(/\s+/)
+    if (parts.length >= 2) {
+      const providerPart = parts[0]!.toLowerCase()
+      const modelPart = parts.slice(1).join(' ')
+
+      let provMatch = providers.findIndex(p => p.name.toLowerCase() === providerPart)
+      if (provMatch < 0) {
+        provMatch = providers.findIndex(p => p.name.toLowerCase().includes(providerPart))
+      }
+      if (provMatch >= 0) {
+        return switchModel(config, providers, provMatch, modelPart)
+      }
     }
 
     // Match by provider name
@@ -119,7 +138,7 @@ export const call: LocalCommandCall = async (args) => {
 
     return {
       type: 'text' as const,
-      value: `❌ Provider "${trimmed}" not found.\n\nRun /model to see available providers.`,
+      value: `❌ Provider "${trimmed}" not found.\n\nRun /model to see available providers.\n\nTip: Use /model provider/model to change model within a provider.\nExample: /model openrouter/anthropic/claude-sonnet-4`,
     }
   }
 
@@ -184,6 +203,49 @@ function switchProvider(config: Config, providers: Provider[], idx: number): { t
     value: [
       `✅ Switched to: ${target.name}`,
       `   Model: ${target.model}`,
+      `   Endpoint: ${url}`,
+      '',
+      '  💾 Saved as default. Will be used on next start.',
+    ].join('\n'),
+  }
+}
+
+/**
+ * Switch model within an existing provider (e.g. OpenRouter has 200+ models).
+ * Usage: /model openrouter/anthropic/claude-sonnet-4
+ *        /model openrouter/google/gemini-2.5-flash
+ */
+function switchModel(config: Config, providers: Provider[], idx: number, newModel: string): { type: 'text'; value: string } {
+  const target = providers[idx]!
+  const oldModel = target.model
+
+  // Update the model in the provider config
+  target.model = newModel
+  config.providers = providers
+
+  // Update env vars immediately
+  let apiKey = target.apiKey
+  if (typeof apiKey === 'string' && apiKey.startsWith('env:')) {
+    apiKey = process.env[apiKey.slice(4)] || ''
+  }
+  if (apiKey) {
+    process.env.OPENAI_API_KEY = apiKey
+  }
+  process.env.OPENAI_BASE_URL = target.baseUrl
+  process.env.OPENAI_MODEL = newModel
+
+  // Persist
+  config.activeProvider = target.name
+  config.activeModel = newModel
+  saveConfig(config)
+
+  const url = target.baseUrl.replace(/https?:\/\//, '').replace(/\/api.*$/, '')
+
+  return {
+    type: 'text' as const,
+    value: [
+      `✅ Switched model within: ${target.name}`,
+      `   ${oldModel} → ${newModel}`,
       `   Endpoint: ${url}`,
       '',
       '  💾 Saved as default. Will be used on next start.',
