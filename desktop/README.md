@@ -1,13 +1,16 @@
-# FreeClaude Desktop (Alpha)
+# FreeClaude Desktop (Concept)
 
-Alpha desktop orchestration client for FreeClaude, built with [Tauri](https://tauri.app) + vanilla TypeScript.
+> ⚠️ **This is a design prototype.** It does not build or run as a standalone application.
+> See the CLI (`freeclaude` / `node dist/cli.mjs`) for the working product.
+
+Design-stage desktop orchestration client for FreeClaude, built with [Tauri](https://tauri.app) + vanilla TypeScript.
 
 ## Current Status
 
-- Alpha orchestration surface for the local FreeClaude runtime
-- Real task workspace backed by `freeclaude task ... --json`
-- Built-in task templates, recurring local schedules, live task polling, and runtime/vault path visibility
-- Still not a full review/approval queue or hosted multi-agent control plane
+- **Concept / design prototype** — source files exist but the app is not buildable or shippable
+- Contains planned six-screen layout (Inbox/Review, Running Tasks, New Task, Providers/Runtime, Usage/Cost, Memory Vault)
+- Tauri Rust bridge code sketches IPC commands for task management
+- Not connected to a working build pipeline
 
 ## Features
 

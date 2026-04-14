@@ -7,10 +7,9 @@
 Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible provider.
 
 [![v3.0.5](https://img.shields.io/badge/version-3.0.5-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
-[![Phase 0-4 Done](https://img.shields.io/badge/Phase-0..4%20Done%20%7C%20Launch%20Ready-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
-[![Tests](https://img.shields.io/badge/tests-70%2F70%20pass-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
-[![Desktop](https://img.shields.io/badge/Desktop-Alpha-orange)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
-[![VS Code](https://img.shields.io/badge/VS%20Code-Light%20Companion-blue)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/extension)
+[![CI](https://img.shields.io/badge/CI-smoke%20%2B%20tests-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude/actions)
+[![Desktop](https://img.shields.io/badge/Desktop-Concept-lightgrey)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
+[![VS Code](https://img.shields.io/badge/VS%20Code-Concept-lightgrey)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/extension)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 [English](#english) · [Русский](#русский)
@@ -23,10 +22,16 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 
 ### Статус поверхностей
 
-- **CLI** — основная поддерживаемая runtime-поверхность
-- **Desktop** — **alpha** orchestration workspace: inbox/review, running tasks, new task, providers/runtime, usage/cost, memory vault
-- **VS Code extension** — **light companion**: отправляет context в background tasks и показывает task status, не primary surface
-- **Bridge / remote / CCR / Anthropic-only inherited paths** — не опорная primary surface этого цикла
+| Поверхность | Статус | Описание |
+|-------------|--------|----------|
+| **CLI** | ✅ Primary | Основная рабочая поверхность |
+| **Multi-provider** | ✅ Stable | ZAI, Ollama, Gemini, DeepSeek, OpenAI-compat + fallback |
+| **Voice** | 🧪 Beta | Whisper STT через SoX, требует `brew install sox whisper-cpp` |
+| **Task protocol** | 🔧 Prototype | `freeclaude task run/list/cancel --json` |
+| **Desktop** | 💡 Concept | Дизайн-прототип, не собирается и не запускается |
+| **VS Code extension** | 💡 Concept | Stub, не опубликован |
+| **Memory vault** | 📋 Planned | Запланирован, не реализован |
+| **Bridge / remote / CCR** | ⛔ Inherited | Anthropic-specific, не поддерживается в этом цикле |
 
 ### Engineering truth
 
@@ -36,22 +41,13 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 
 ### Что нового в v3
 
-| Фаза | Фичи | Статус |
-|------|-------|--------|
-| **Phase 0** | 🔧 Quality foundation, branding, CI/CD | ✅ |
-| **Phase 1** | 🗂️ `/undo`, `/repo-map`, Voice, Fallback, Memory, Cost tracking | ✅ |
-| **Phase 2** | 🪝 Hooks (26 types), Plugins (20K+ lines), Desktop app (alpha) | ✅ |
-| **Phase 3** | 💻 VS Code companion, MCP servers, Background Agents | ✅ |
-| **Phase 4** | 🚀 Launch: npm, Homebrew, Docker | ✅ |
-
-### Уникальные фичи (нет у конкурентов)
-
-- 🏗️ **CEOClaw PM MCP** — управление проектами прямо в coding agent (EVM, CPI, SPI)
-- 🏢 **1С OData MCP** — доступ к данным 1С:Предприятие (Альфа-Авто, БАЗИС)
-- 🔄 **Multi-Provider Fallback** — автоматическое переключение между ZAI, Ollama, Gemini
+- 🔄 **Multi-Provider Fallback** — автоматическое переключение между ZAI, Ollama, Gemini и другими
+- 🎙️ **Voice Mode (Beta)** — Whisper STT через SoX, локально и бесплатно
 - 🧠 **GBrain Semantic Memory** — семантическая память через локальные embeddings
-- 🎙️ **Voice Mode** — Whisper STT + Edge TTS (бесплатно, локально)
-- 🇷🇺 **Russian Locale** — полная поддержка русского языка
+- 💰 **Cost Tracking** — `/cost` показывает расходы по провайдерам
+- 🛡️ **Hooks** — 5 встроенных safety-хуков
+- 🔧 **Task Protocol (Prototype)** — машинный `freeclaude task run/list/cancel --json`
+- 🏗️ **MCP Servers** — CEOClaw PM + 1С OData
 
 ### Быстрый старт
 
@@ -198,16 +194,29 @@ FreeClaude includes 5 pre-configured safety hooks:
 
 ### Сравнение с конкурентами
 
-| Фича | FreeClaude | Claude Code | Cline | Aider | OpenWork |
-|-------|-----------|-------------|-------|-------|----------|
-| Цена | 🆓 Free | $20/мес | Free | Free | Free |
-| Fallback Chain | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Semantic Memory | ✅ GBrain | ❌ | ❌ | ❌ | Obsidian |
-| Voice Mode | ✅ | 🔒 Paid | ❌ | ❌ | ✅ |
-| PM Tools | ✅ MCP | ❌ | ❌ | ❌ | ❌ |
-| 1С Integration | ✅ MCP | ❌ | ❌ | ❌ | ❌ |
-| Hooks | ✅ 5 built-in | ✅ | ❌ | ❌ | ❌ |
-| Russian Locale | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Фича | FreeClaude | Claude Code | Cline | Aider |
+|-------|-----------|-------------|-------|-------|
+| Цена | 🆓 Free | $20/мес | Free | Free |
+| Fallback Chain | ✅ | ❌ | ❌ | ❌ |
+| Semantic Memory | ✅ GBrain | ❌ | ❌ | ❌ |
+| Voice Mode | 🧪 Beta | 🔒 Paid | ❌ | ❌ |
+| PM Tools | ✅ MCP | ❌ | ❌ | ❌ |
+| Hooks | ✅ 5 built-in | ✅ | ❌ | ❌ |
+
+### Upstream Sync
+
+FreeClaude is a fork of [Anthropic Claude Code](https://github.com/anthropics/claude-code).
+
+```bash
+git remote add upstream https://github.com/anthropics/claude-code.git
+git fetch upstream --no-tags
+```
+
+**Protected files** (never overwrite from upstream):
+`scripts/build.ts`, `src/hooks/useVoiceEnabled.ts`, `src/voice/voiceModeEnabled.ts`,
+`package.json`, `dist/cli.mjs`, `README.md`
+
+**Merge strategy:** manual cherry-pick of relevant upstream changes.
 
 ---
 

@@ -44,3 +44,12 @@ jobs:
 
       - name: Provider recommendation tests
         run: npm run test:provider-recommendation
+
+      - name: Task manager tests
+        run: bun test src/services/tasks/taskManager.test.ts
+
+      - name: Trust baseline
+        run: npm run check:trust-baseline
+
+      - name: Desktop & Extension typecheck
+        run: npm run typecheck:desktop-extension
