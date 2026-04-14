@@ -341,6 +341,8 @@ export function useVoice({
     focusTriggeredRef.current = false
     updateState('processing')
     voiceModule?.stopRecording()
+    const waitForRecorderStop =
+      voiceModule?.waitForRecordingToStop?.() ?? Promise.resolve()
     // Capture duration BEFORE the finalize round-trip so that the WebSocket
     // wait time is not included (otherwise a quick tap looks like > 2s).
     // All ref-backed values are captured here, BEFORE the async boundary —
@@ -348,14 +350,8 @@ export function useVoice({
     // these refs (e.g. focusFlushedCharsRef = 0 in startRecordingSession),
     // reproducing the silent-drop false-positive this ref exists to prevent.
     const recordingDurationMs = Date.now() - recordingStartRef.current
-    const hadAudioSignal = hasAudioSignalRef.current
     const retried = retryUsedRef.current
     const focusFlushedChars = focusFlushedCharsRef.current
-    // wsConnected distinguishes "backend received audio but dropped it" (the
-    // bug backend PR #287008 fixes) from "WS handshake never completed" —
-    // in the latter case audio is still in audioBuffer, never reached the
-    // server, but hasAudioSignalRef is already true from ambient noise.
-    const wsConnected = everConnectedRef.current
     // Capture generation BEFORE the .then() — if a new session starts during
     // the finalize wait, sessionGenRef has already advanced by the time the
     // continuation runs, so capturing inside the .then() would yield the new
@@ -364,17 +360,29 @@ export function useVoice({
     const isStale = () => sessionGenRef.current !== myGen
     logForDebugging('[voice] Recording stopped')
 
-    // Send finalize and wait for the WebSocket to close before reading the
-    // accumulated transcript.  The close handler promotes any unreported
-    // interim text to final, so we must wait for it to fire.
-    const finalizePromise: Promise<FinalizeSource | undefined> =
-      connectionRef.current
-        ? connectionRef.current.finalize()
-        : Promise.resolve(undefined)
-
-    void finalizePromise
-      .then(async finalizeSource => {
+    void waitForRecorderStop
+      .then(() => {
+        if (isStale()) return null
+        // wsConnected distinguishes "backend received audio but dropped it"
+        // from "backend never became ready". For local voice, readiness is
+        // immediate and buffered recorder chunks may arrive during drain.
+        const wsConnected = useLocalVoiceMode || everConnectedRef.current
+        const hadAudioSignal = hasAudioSignalRef.current
+        const finalizePromise: Promise<FinalizeSource | undefined> =
+          connectionRef.current
+            ? connectionRef.current.finalize()
+            : Promise.resolve(undefined)
+        return finalizePromise.then(finalizeSource => ({
+          finalizeSource,
+          hadAudioSignal,
+          wsConnected,
+        }))
+      })
+      .then(async finalizeResult => {
         if (isStale()) return
+        const finalizeSource = finalizeResult?.finalizeSource
+        const hadAudioSignal = finalizeResult?.hadAudioSignal ?? false
+        const wsConnected = finalizeResult?.wsConnected ?? false
         // Silent-drop replay: when the server accepted audio (wsConnected),
         // the mic captured real signal (hadAudioSignal), but finalize timed
         // out with zero transcript — the ~1% session-sticky CE-pod bug.
@@ -1008,6 +1016,11 @@ export function useVoice({
           cleanup()
           updateState('idle')
           return
+        }
+
+        if (useLocalVoiceMode) {
+          connectionRef.current = conn
+          everConnectedRef.current = true
         }
 
         // Safety check: if the user released the key before connectVoiceStream

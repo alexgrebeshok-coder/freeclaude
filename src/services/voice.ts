@@ -331,6 +331,22 @@ export async function checkRecordingAvailability(): Promise<RecordingAvailabilit
 
 let activeRecorder: ChildProcess | null = null
 let nativeRecordingActive = false
+let activeRecorderStoppedPromise: Promise<void> | null = null
+let resolveActiveRecorderStopped: (() => void) | null = null
+
+function createActiveRecorderStopPromise(): void {
+  activeRecorderStoppedPromise = new Promise(resolve => {
+    resolveActiveRecorderStopped = () => {
+      resolve()
+      resolveActiveRecorderStopped = null
+      activeRecorderStoppedPromise = null
+    }
+  })
+}
+
+function settleActiveRecorderStop(): void {
+  resolveActiveRecorderStopped?.()
+}
 
 export async function startRecording(
   onData: (chunk: Buffer) => void,
@@ -443,6 +459,7 @@ function startSoxRecording(
   })
 
   activeRecorder = child
+  createActiveRecorderStopPromise()
 
   child.stdout?.on('data', (chunk: Buffer) => {
     onData(chunk)
@@ -453,12 +470,14 @@ function startSoxRecording(
 
   child.on('close', () => {
     activeRecorder = null
+    settleActiveRecorderStop()
     onEnd()
   })
 
   child.on('error', err => {
     logError(err)
     activeRecorder = null
+    settleActiveRecorderStop()
     onEnd()
   })
 
@@ -490,6 +509,7 @@ function startArecordRecording(
   })
 
   activeRecorder = child
+  createActiveRecorderStopPromise()
 
   child.stdout?.on('data', (chunk: Buffer) => {
     onData(chunk)
@@ -500,12 +520,14 @@ function startArecordRecording(
 
   child.on('close', () => {
     activeRecorder = null
+    settleActiveRecorderStop()
     onEnd()
   })
 
   child.on('error', err => {
     logError(err)
     activeRecorder = null
+    settleActiveRecorderStop()
     onEnd()
   })
 
@@ -522,4 +544,8 @@ export function stopRecording(): void {
     activeRecorder.kill('SIGTERM')
     activeRecorder = null
   }
+}
+
+export function waitForRecordingToStop(): Promise<void> {
+  return activeRecorderStoppedPromise ?? Promise.resolve()
 }
