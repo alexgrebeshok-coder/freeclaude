@@ -33,6 +33,12 @@ import {
   FallbackChain,
   shouldFallback,
 } from './fallbackChain.js'
+import {
+  isGigaChatUrl,
+  getGigaChatApiUrl,
+  parseGigaChatCredentials,
+  getGigaChatToken,
+} from './gigachatAuth.js'
 import { recordLatency } from './fallbackEnhanced.js'
 import { logUsage } from '../usage/usageStore.js'
 import { estimateTokens, parseApiUsage } from '../usage/tokenCounter.js'
@@ -1049,10 +1055,15 @@ class OpenAIShimMessages {
 
     const apiKey = process.env.OPENAI_API_KEY ?? ''
     const isAzure = /cognitiveservices\.azure\.com|openai\.azure\.com/.test(request.baseUrl)
+    const isGigaChat = isGigaChatUrl(request.baseUrl)
 
-    if (apiKey) {
+    if (isGigaChat) {
+      // GigaChat uses OAuth2 — exchange client credentials for access_token
+      const { clientId, clientSecret } = parseGigaChatCredentials(apiKey)
+      const accessToken = await getGigaChatToken(clientId, clientSecret)
+      headers.Authorization = `Bearer ${accessToken}`
+    } else if (apiKey) {
       if (isAzure) {
-        // Azure uses api-key header instead of Bearer token
         headers['api-key'] = apiKey
       } else {
         headers.Authorization = `Bearer ${apiKey}`
