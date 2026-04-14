@@ -319,8 +319,8 @@ export async function checkRecordingAvailability(): Promise<RecordingAvailabilit
     return {
       available: false,
       reason: pm
-        ? `Voice mode requires SoX for audio recording. Install it with: ${pm.displayCommand}`
-        : 'Voice mode requires SoX for audio recording. Install SoX manually:\n  macOS: brew install sox\n  Ubuntu/Debian: sudo apt-get install sox\n  Fedora: sudo dnf install sox',
+        ? `Voice recording requires SoX. Install with: ${pm.displayCommand}`
+        : 'Voice recording requires SoX. Install with: brew install sox',
     }
   }
 

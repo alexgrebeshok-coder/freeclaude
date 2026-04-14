@@ -22,8 +22,8 @@ import {
 } from '../services/voiceStreamSTT.js'
 import {
   connectLocalVoiceMode,
-  isLocalVoiceModeRequested,
 } from '../services/voice/voiceMode.js'
+import { isLocalVoiceModeEnabled } from '../voice/voiceModeEnabled.js'
 import { logForDebugging } from '../utils/debug.js'
 import { toError } from '../utils/errors.js'
 import { getSystemLocaleLanguage } from '../utils/intl.js'
@@ -206,7 +206,7 @@ export function useVoice({
   enabled,
   focusMode,
 }: UseVoiceOptions): UseVoiceReturn {
-  const useLocalVoiceMode = isLocalVoiceModeRequested()
+  const useLocalVoiceMode = isLocalVoiceModeEnabled()
   const [state, setState] = useState<VoiceState>('idle')
   const stateRef = useRef<VoiceState>('idle')
   const connectionRef = useRef<VoiceStreamConnection | null>(null)

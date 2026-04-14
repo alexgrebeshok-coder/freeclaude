@@ -441,7 +441,6 @@ async fn get_runtime_status() -> Result<Value, String> {
     let artifacts_path = format!("{}/.freeclaude/artifacts", home);
     let vault_path = format!("{}/.freeclaude/vault", home);
     let whisper_model_path = format!("{}/.openclaw/models/whisper/ggml-small.bin", home);
-    let claude_settings_path = format!("{}/.claude/settings.json", home);
 
     let config = if Path::new(&config_path).exists() {
         Some(read_json_file(&config_path)?)
@@ -471,29 +470,16 @@ async fn get_runtime_status() -> Result<Value, String> {
 
     let mut voice_missing = Vec::new();
     if !command_exists("rec") {
-        voice_missing.push("SoX rec".to_string());
+        voice_missing.push("SoX (install with: brew install sox)".to_string());
     }
     if !command_exists("whisper-cli") {
-        voice_missing.push("whisper-cli".to_string());
+        voice_missing.push("whisper-cli (install with: brew install whisper-cpp)".to_string());
     }
     if !command_exists("ffmpeg") {
-        voice_missing.push("ffmpeg".to_string());
+        voice_missing.push("ffmpeg (install with: brew install ffmpeg)".to_string());
     }
     if !Path::new(&whisper_model_path).exists() {
-        voice_missing.push("Whisper model".to_string());
-    }
-
-    let settings_voice_enabled = if Path::new(&claude_settings_path).exists() {
-        read_json_file(&claude_settings_path)
-            .ok()
-            .and_then(|value| value.get("voiceEnabled").and_then(|flag| flag.as_bool()))
-            .unwrap_or(false)
-    } else {
-        false
-    };
-
-    if !settings_voice_enabled {
-        voice_missing.push("~/.claude/settings.json voiceEnabled=true".to_string());
+        voice_missing.push(format!("Whisper model (expected at {})", whisper_model_path));
     }
 
     Ok(json!({

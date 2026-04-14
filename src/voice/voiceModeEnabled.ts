@@ -1,6 +1,5 @@
 import { feature } from 'bun:bundle'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
-import { isLocalVoiceModeRequested } from '../services/voice/voiceMode.js'
 import {
   getClaudeAIOAuthTokens,
   isAnthropicAuthEnabled,
@@ -45,18 +44,13 @@ export function hasVoiceAuth(): boolean {
 }
 
 export function isLocalVoiceModeEnabled(): boolean {
-  return feature('VOICE_MODE') ? isLocalVoiceModeRequested() : false
+  return feature('VOICE_MODE') ? true : false
 }
 
 /**
- * Full runtime check: auth + GrowthBook kill-switch. Callers: `/voice`
- * (voice.ts, voice/index.ts), ConfigTool, VoiceModeNotice — command-time
- * paths where a fresh keychain read is acceptable. For React render
- * paths use useVoiceEnabled() instead (memoizes the auth half).
+ * Full runtime check for whether any voice path is available. Local voice is
+ * always on when the feature is built in; auth enables the hosted path.
  */
 export function isVoiceModeEnabled(): boolean {
-  return (
-    isLocalVoiceModeEnabled() ||
-    (hasVoiceAuth() && isVoiceGrowthBookEnabled())
-  )
+  return isLocalVoiceModeEnabled() || hasVoiceAuth()
 }

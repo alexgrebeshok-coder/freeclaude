@@ -1,15 +1,10 @@
 import type { Command } from '../../commands.js'
-import {
-  isVoiceGrowthBookEnabled,
-  isVoiceModeEnabled,
-} from '../../voice/voiceModeEnabled.js'
+import { isVoiceModeEnabled } from '../../voice/voiceModeEnabled.js'
 
 const voice = {
   type: 'local',
   name: 'voice',
-  description: 'Toggle voice mode',
-  availability: ['claude-ai'],
-  isEnabled: () => isVoiceGrowthBookEnabled(),
+  description: 'Check local voice status',
   get isHidden() {
     return !isVoiceModeEnabled()
   },

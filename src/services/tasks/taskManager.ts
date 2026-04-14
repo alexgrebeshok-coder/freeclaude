@@ -12,6 +12,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -180,6 +181,8 @@ const TASK_TEMPLATES: TaskTemplate[] = [
   },
 ]
 
+const MAX_EVENTS_PER_TASK = 500
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -234,6 +237,20 @@ function ensureTaskDirectories(): void {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true })
     }
+  }
+  try {
+    const staleTempFiles = readdirSync(tasksDir()).filter(file =>
+      file.endsWith('.tmp'),
+    )
+    for (const file of staleTempFiles) {
+      const path = join(tasksDir(), file)
+      const ageMs = Date.now() - statSync(path).mtimeMs
+      if (ageMs > 60_000) {
+        unlinkSync(path)
+      }
+    }
+  } catch {
+    // Best effort cleanup only.
   }
 }
 
@@ -424,11 +441,33 @@ export function appendTaskEvent(
     ...(data ? { data } : {}),
   }
   appendJsonLine(taskEventsPath(taskId), event)
+  pruneOldEvents(taskId)
   return event
 }
 
+function pruneOldEvents(taskId: string): void {
+  const path = taskEventsPath(taskId)
+  if (!existsSync(path)) {
+    return
+  }
+  const lines = readFileSync(path, 'utf-8').split('\n').filter(Boolean)
+  if (lines.length <= MAX_EVENTS_PER_TASK) {
+    return
+  }
+  const pruned = lines.slice(lines.length - MAX_EVENTS_PER_TASK)
+  writeFileSync(path, `${pruned.join('\n')}\n`, 'utf-8')
+}
+
 function getTemplateById(id: TaskTemplateId | undefined): TaskTemplate {
-  return TASK_TEMPLATES.find(template => template.id === (id ?? 'custom')) ?? TASK_TEMPLATES[0]!
+  if (id === undefined || id === 'custom') {
+    return TASK_TEMPLATES[0]!
+  }
+  const template = TASK_TEMPLATES.find(candidate => candidate.id === id)
+  if (!template) {
+    const valid = TASK_TEMPLATES.map(candidate => candidate.id).join(', ')
+    throw new Error(`Unknown template "${id}". Valid templates: ${valid}`)
+  }
+  return template
 }
 
 function buildTaskPrompt(inputPrompt: string, templateId: TaskTemplateId): string {
@@ -897,7 +936,15 @@ export async function runTaskWorker(taskId: string): Promise<TaskRecord> {
 
   child = spawn(
     process.execPath,
-    [cliPath, '--print', '--output-format', 'stream-json', '--verbose', task.prompt],
+    [
+      cliPath,
+      '--print',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--',
+      task.prompt,
+    ],
     {
       cwd: task.worktreePath || task.cwd,
       env: {

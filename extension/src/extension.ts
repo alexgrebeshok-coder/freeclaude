@@ -40,7 +40,7 @@ function truncateForPrompt(value: string, maxLength = 12000): string {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength)}\n\n[truncated]`;
 }
 
-function runCliText(args: string[]): Promise<string> {
+function runCliTextOnce(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const cli = findCli();
     const child = spawn(cli, getCliArgs(args), {
@@ -62,8 +62,23 @@ function runCliText(args: string[]): Promise<string> {
       reject(new Error(stderr.trim() || `FreeClaude exited ${code}`));
     });
 
-    child.on('error', (error) => reject(error));
+      child.on('error', (error) => reject(error));
   });
+}
+
+async function runCliText(args: string[], retries = 2): Promise<string> {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await runCliTextOnce(args);
+    } catch (error) {
+      if (attempt === retries) {
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
+
+  throw new Error('unreachable');
 }
 
 async function runCliJson<T>(args: string[]): Promise<T> {

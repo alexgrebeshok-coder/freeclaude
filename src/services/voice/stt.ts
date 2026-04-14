@@ -1,3 +1,4 @@
+import { existsSync } from 'fs'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -49,8 +50,30 @@ export async function transcribePcmAudio(options: {
   const tempDir = await mkdtemp(join(tmpdir(), 'freeclaude-voice-stt-'))
   const rawPath = join(tempDir, 'input.raw')
   const wavPath = join(tempDir, 'input.wav')
+  const modelPath = options.modelPath || getDefaultWhisperModelPath()
 
   try {
+    const ffmpegAvailable = await execFileNoThrow(
+      'ffmpeg',
+      ['-version'],
+      { preserveOutputOnError: false, useCwd: false },
+    )
+    if (ffmpegAvailable.code !== 0) {
+      throw new Error('Transcription requires ffmpeg. Install with: brew install ffmpeg')
+    }
+
+    if (!(await isWhisperCliAvailable())) {
+      throw new Error(
+        'Transcription requires whisper-cli. Install with: brew install whisper-cpp',
+      )
+    }
+
+    if (!existsSync(modelPath)) {
+      throw new Error(
+        `Transcription requires a Whisper model. Expected at: ${modelPath}`,
+      )
+    }
+
     await writeFile(rawPath, options.audio)
 
     const ffmpegResult = await execFileNoThrow(
@@ -70,14 +93,14 @@ export async function transcribePcmAudio(options: {
       { preserveOutputOnError: false, useCwd: false },
     )
     if (ffmpegResult.code !== 0) {
-      return ''
+      throw new Error('Failed to convert recorded audio for transcription.')
     }
 
     const whisperResult = await execFileNoThrow(
       'whisper-cli',
       [
         '-m',
-        options.modelPath || getDefaultWhisperModelPath(),
+        modelPath,
         '-l',
         options.language || 'en',
         '-t',
@@ -88,7 +111,7 @@ export async function transcribePcmAudio(options: {
     )
 
     if (whisperResult.code !== 0) {
-      return ''
+      throw new Error('whisper-cli could not transcribe the recorded audio.')
     }
 
     return cleanWhisperOutput(whisperResult.stdout)
