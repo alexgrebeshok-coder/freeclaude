@@ -137,10 +137,14 @@ export function isInProtectedNamespace(): boolean {
   // USER_TYPE is build-time --define'd; in external builds this block is
   // DCE'd so the require() and namespace allowlist never appear in the bundle.
   if (process.env.USER_TYPE === 'ant') {
+    const namespace = process.env.COO_NAMESPACE
+    if (!namespace) {
+      return false
+    }
     /* eslint-disable @typescript-eslint/no-require-imports */
     return (
       require('./protectedNamespace.js') as typeof import('./protectedNamespace.js')
-    ).checkProtectedNamespace()
+    ).isProtectedNamespace(namespace)
     /* eslint-enable @typescript-eslint/no-require-imports */
   }
   return false

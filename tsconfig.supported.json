@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "rootDir": ".",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "src/*": ["./src/*"]
+    }
+  },
+  "files": [
+    "scripts/check-version-truth.ts",
+    "scripts/system-check.ts",
+    "src/services/api/fallbackChain.ts",
+    "src/services/api/providerConfig.ts",
+    "src/services/memory/memoryStore.ts",
+    "src/services/tasks/taskManager.ts",
+    "src/services/usage/usageStore.ts",
+    "src/services/voice/diagnostics.ts",
+    "src/services/voice/exec.ts",
+    "src/services/voice/stt.ts",
+    "src/services/voice/tts.ts",
+    "src/services/voice/types.ts",
+    "src/services/voice/voiceMode.ts",
+    "src/services/voice/voiceService.ts",
+    "src/utils/providerProfile.ts",
+    "src/utils/providerRecommendation.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

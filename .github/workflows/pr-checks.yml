@@ -42,6 +42,9 @@ jobs:
       - name: Voice service tests
         run: bun test src/services/voice/*.test.ts
 
+      - name: Runtime doctor tests
+        run: bun test scripts/system-check.test.ts
+
       - name: Provider recommendation tests
         run: npm run test:provider-recommendation
 

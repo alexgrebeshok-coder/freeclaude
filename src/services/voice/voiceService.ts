@@ -13,6 +13,11 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import {
+  describeVoiceTranscriptionReadiness,
+  isVoiceTranscriptionReady,
+} from './diagnostics.js'
+import { getDefaultWhisperModelPath } from './stt.js'
 
 // ---------------------------------------------------------------------------
 // STT (Speech-to-Text)
@@ -36,7 +41,19 @@ export interface STTResult {
  */
 export function isWhisperAvailable(): boolean {
   try {
-    execSync('which whisper-cli 2>/dev/null || which whisper 2>/dev/null', {
+    execSync('which whisper-cli 2>/dev/null', {
+      timeout: 3000,
+      stdio: 'pipe',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isFfmpegAvailableSync(): boolean {
+  try {
+    execSync('ffmpeg -version >/dev/null 2>&1', {
       timeout: 3000,
       stdio: 'pipe',
     })
@@ -55,10 +72,7 @@ export async function transcribe(
 ): Promise<STTResult> {
   const {
     language = 'ru',
-    model = join(
-      process.env.HOME || '/root',
-      '.openclaw/models/whisper/ggml-small.bin',
-    ),
+    model = getDefaultWhisperModelPath(),
     threads = 8,
   } = options
 
@@ -211,20 +225,44 @@ export async function toOpus(inputPath: string): Promise<string> {
 export function getVoiceStatus(): {
   stt: boolean
   tts: boolean
+  ffmpeg: boolean
+  whisperModel: boolean
+  whisperModelPath: string
+  transcriptionReady: boolean
   sttDetails: string
   ttsDetails: string
+  transcriptionDetails: string
 } {
   const stt = isWhisperAvailable()
   const tts = isEdgeTTSAvailable()
+  const ffmpeg = isFfmpegAvailableSync()
+  const whisperModelPath = getDefaultWhisperModelPath()
+  const whisperModel = existsSync(whisperModelPath)
+  const transcriptionReady = isVoiceTranscriptionReady({
+    ffmpegAvailable: ffmpeg,
+    whisperCliAvailable: stt,
+    modelExists: whisperModel,
+    modelPath: whisperModelPath,
+  })
 
   return {
     stt,
     tts,
+    ffmpeg,
+    whisperModel,
+    whisperModelPath,
+    transcriptionReady,
     sttDetails: stt
       ? 'whisper-cli available'
       : 'Install: brew install whisper-cpp + download model',
     ttsDetails: tts
-      ? 'edge-tts available'
-      : 'Install: pip3 install edge-tts',
+      ? 'edge-tts available (optional)'
+      : 'Optional: pip3 install edge-tts',
+    transcriptionDetails: describeVoiceTranscriptionReadiness({
+      ffmpegAvailable: ffmpeg,
+      whisperCliAvailable: stt,
+      modelExists: whisperModel,
+      modelPath: whisperModelPath,
+    }),
   }
 }

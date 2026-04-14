@@ -30,13 +30,14 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 | **Task protocol** | 🔧 Prototype | `freeclaude task run/list/cancel --json` |
 | **Desktop** | 💡 Concept | Дизайн-прототип, не собирается и не запускается |
 | **VS Code extension** | 💡 Concept | Stub, не опубликован |
-| **Memory vault** | 📋 Planned | Запланирован, не реализован |
+| **Memory vault** | 🔧 Prototype | Task protocol пишет Markdown notes в `~/.freeclaude/vault/`, но отдельного UI ещё нет |
 | **Bridge / remote / CCR** | ⛔ Inherited | Anthropic-specific, не поддерживается в этом цикле |
 
 ### Engineering truth
 
 - `bun run smoke` — текущая runtime-проверка для основного CLI-пути
-- `npm run typecheck:desktop-extension` — текущий зелёный typecheck baseline для desktop + extension
+- `npm run typecheck:supported` — текущий зелёный typecheck gate для поддерживаемых FreeClaude runtime surfaces
+- `npm run typecheck:desktop-extension` — отдельный typecheck для desktop + extension concept surfaces
 - Глобальный `npm run typecheck` пока включает inherited paths и ещё не является зелёным release gate
 
 ### Что нового в v3
@@ -164,15 +165,15 @@ freeclaude task run --json "summarize changed files"
 freeclaude task resume --json <task-id>
 freeclaude task cancel --json <task-id>
 freeclaude task template list --json
-freeclaude task template run --json summarize-changes
-freeclaude task schedule run --json --every 60 --template summarize-changes
+freeclaude task template run --json summarize-changed-files
+freeclaude task schedule run --json --every 60 --template summarize-changed-files
 freeclaude task schedule list --json
 freeclaude task schedule cancel --json <schedule-id>
 ```
 
-Task metadata and structured events are written to `~/.freeclaude/tasks/<task-id>/`.
-Artifacts are written to `~/.freeclaude/artifacts/<task-id>/`.
-Vault notes are written to `~/.freeclaude/vault/tasks/<date>/<task-id>.md`.
+Task metadata and structured events are written to flat files like `~/.freeclaude/tasks/<task-id>.json` and `~/.freeclaude/tasks/<task-id>.events.jsonl`.
+Artifacts are written to files like `~/.freeclaude/artifacts/<task-id>.md` and `~/.freeclaude/artifacts/<task-id>.diff.patch`.
+Vault task notes are written to `~/.freeclaude/vault/tasks/<task-id>.md`, and project rollups to `~/.freeclaude/vault/projects/<repo>.md`.
 
 ### Hook System
 
@@ -260,15 +261,15 @@ freeclaude task run --json "summarize changed files"
 freeclaude task resume --json <task-id>
 freeclaude task cancel --json <task-id>
 freeclaude task template list --json
-freeclaude task template run --json summarize-changes
-freeclaude task schedule run --json --every 60 --template summarize-changes
+freeclaude task template run --json summarize-changed-files
+freeclaude task schedule run --json --every 60 --template summarize-changed-files
 freeclaude task schedule list --json
 freeclaude task schedule cancel --json <schedule-id>
 ```
 
-Task metadata and structured events are written to `~/.freeclaude/tasks/<task-id>/`.
-Artifacts are written to `~/.freeclaude/artifacts/<task-id>/`.
-Vault notes are written to `~/.freeclaude/vault/tasks/<date>/<task-id>.md`.
+Task metadata and structured events are written to flat files like `~/.freeclaude/tasks/<task-id>.json` and `~/.freeclaude/tasks/<task-id>.events.jsonl`.
+Artifacts are written to files like `~/.freeclaude/artifacts/<task-id>.md` and `~/.freeclaude/artifacts/<task-id>.diff.patch`.
+Vault task notes are written to `~/.freeclaude/vault/tasks/<task-id>.md`, and project rollups to `~/.freeclaude/vault/projects/<repo>.md`.
 
 ### Free Providers (No API Key Needed)
 

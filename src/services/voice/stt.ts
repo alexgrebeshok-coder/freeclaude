@@ -2,11 +2,11 @@ import { existsSync } from 'fs'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
+import { execVoiceCommandNoThrow } from './exec.js'
 
 const DEFAULT_WHISPER_THREADS = '8'
 
-function getDefaultWhisperModelPath(): string {
+export function getDefaultWhisperModelPath(): string {
   return (
     process.env.FREECLAUDE_WHISPER_MODEL ||
     join(
@@ -14,6 +14,15 @@ function getDefaultWhisperModelPath(): string {
       '.openclaw/models/whisper/ggml-small.bin',
     )
   )
+}
+
+export async function isFfmpegAvailable(): Promise<boolean> {
+  const result = await execVoiceCommandNoThrow(
+    'ffmpeg',
+    ['-version'],
+    { preserveOutputOnError: false },
+  )
+  return result.code === 0
 }
 
 function cleanWhisperOutput(output: string): string {
@@ -29,10 +38,10 @@ function cleanWhisperOutput(output: string): string {
 }
 
 export async function isWhisperCliAvailable(): Promise<boolean> {
-  const result = await execFileNoThrow(
+  const result = await execVoiceCommandNoThrow(
     'whisper-cli',
     ['--help'],
-    { preserveOutputOnError: false, useCwd: false },
+    { preserveOutputOnError: false },
   )
   return result.code === 0
 }
@@ -53,12 +62,7 @@ export async function transcribePcmAudio(options: {
   const modelPath = options.modelPath || getDefaultWhisperModelPath()
 
   try {
-    const ffmpegAvailable = await execFileNoThrow(
-      'ffmpeg',
-      ['-version'],
-      { preserveOutputOnError: false, useCwd: false },
-    )
-    if (ffmpegAvailable.code !== 0) {
+    if (!(await isFfmpegAvailable())) {
       throw new Error('Transcription requires ffmpeg. Install with: brew install ffmpeg')
     }
 
@@ -76,7 +80,7 @@ export async function transcribePcmAudio(options: {
 
     await writeFile(rawPath, options.audio)
 
-    const ffmpegResult = await execFileNoThrow(
+    const ffmpegResult = await execVoiceCommandNoThrow(
       'ffmpeg',
       [
         '-y',
@@ -90,13 +94,13 @@ export async function transcribePcmAudio(options: {
         rawPath,
         wavPath,
       ],
-      { preserveOutputOnError: false, useCwd: false },
+      { preserveOutputOnError: false },
     )
     if (ffmpegResult.code !== 0) {
       throw new Error('Failed to convert recorded audio for transcription.')
     }
 
-    const whisperResult = await execFileNoThrow(
+    const whisperResult = await execVoiceCommandNoThrow(
       'whisper-cli',
       [
         '-m',
@@ -107,7 +111,7 @@ export async function transcribePcmAudio(options: {
         String(options.threads ?? DEFAULT_WHISPER_THREADS),
         wavPath,
       ],
-      { maxBuffer: 1_000_000, preserveOutputOnError: false, useCwd: false },
+      { maxBuffer: 1_000_000, preserveOutputOnError: false },
     )
 
     if (whisperResult.code !== 0) {

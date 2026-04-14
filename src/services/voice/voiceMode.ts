@@ -1,9 +1,9 @@
+import { transcribePcmAudio } from './stt.js'
 import type {
   FinalizeSource,
   VoiceStreamCallbacks,
   VoiceStreamConnection,
-} from '../voiceStreamSTT.js'
-import { transcribePcmAudio } from './stt.js'
+} from './types.js'
 
 const LOCAL_VOICE_ENV = 'FREECLAUDE_LOCAL_VOICE'
 

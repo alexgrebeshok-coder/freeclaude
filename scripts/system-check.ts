@@ -1,22 +1,44 @@
-// @ts-nocheck
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import {
   resolveCodexApiCredentials,
   resolveProviderRequest,
   isLocalProviderUrl as isProviderLocalUrl,
 } from '../src/services/api/providerConfig.js'
+import {
+  getLocalVoiceDiagnostics,
+  type LocalVoiceDiagnostics,
+} from '../src/services/voice/diagnostics.js'
 
-type CheckResult = {
+export type CheckSeverity = 'warn'
+
+export type CheckResult = {
   ok: boolean
   label: string
   detail?: string
+  severity?: CheckSeverity
 }
 
-type CliOptions = {
+export type CliOptions = {
   json: boolean
   outFile: string | null
+}
+
+export type SafeEnvSummary = Record<string, string | boolean>
+
+export type RuntimeDoctorPayload = {
+  timestamp: string
+  cwd: string
+  summary: {
+    total: number
+    passed: number
+    warnings: number
+    failed: number
+  }
+  env: SafeEnvSummary
+  results: CheckResult[]
 }
 
 function pass(label: string, detail?: string): CheckResult {
@@ -27,13 +49,17 @@ function fail(label: string, detail?: string): CheckResult {
   return { ok: false, label, detail }
 }
 
+function warn(label: string, detail?: string): CheckResult {
+  return { ok: true, label, detail, severity: 'warn' }
+}
+
 function isTruthy(value: string | undefined): boolean {
   if (!value) return false
   const normalized = value.trim().toLowerCase()
   return normalized !== '' && normalized !== '0' && normalized !== 'false' && normalized !== 'no'
 }
 
-function parseOptions(argv: string[]): CliOptions {
+export function parseOptions(argv: string[]): CliOptions {
   const options: CliOptions = {
     json: false,
     outFile: null,
@@ -271,6 +297,30 @@ async function checkBaseUrlReachability(): Promise<CheckResult> {
   }
 }
 
+export function createVoiceRuntimeResults(
+  diagnostics: LocalVoiceDiagnostics,
+): CheckResult[] {
+  return [
+    diagnostics.recording.ready
+      ? pass('Voice recording (optional)', diagnostics.recording.detail)
+      : warn('Voice recording (optional)', diagnostics.recording.detail),
+    diagnostics.transcription.ready
+      ? pass(
+          'Voice transcription (optional)',
+          diagnostics.transcription.detail,
+        )
+      : warn(
+          'Voice transcription (optional)',
+          diagnostics.transcription.detail,
+        ),
+  ]
+}
+
+async function checkVoiceRuntime(): Promise<CheckResult[]> {
+  const diagnostics = await getLocalVoiceDiagnostics()
+  return createVoiceRuntimeResults(diagnostics)
+}
+
 function checkOllamaProcessorMode(): CheckResult {
   if (!isTruthy(process.env.CLAUDE_CODE_USE_OPENAI) || isTruthy(process.env.CLAUDE_CODE_USE_GEMINI)) {
     return pass('Ollama processor mode', 'Skipped (OpenAI-compatible mode disabled).')
@@ -310,7 +360,7 @@ function checkOllamaProcessorMode(): CheckResult {
   return pass('Ollama processor mode', `Detected non-CPU mode: ${modelLine}`)
 }
 
-function serializeSafeEnvSummary(): Record<string, string | boolean> {
+function serializeSafeEnvSummary(): SafeEnvSummary {
   if (isTruthy(process.env.CLAUDE_CODE_USE_GEMINI)) {
     return {
       CLAUDE_CODE_USE_GEMINI: true,
@@ -334,9 +384,37 @@ function serializeSafeEnvSummary(): Record<string, string | boolean> {
 
 function printResults(results: CheckResult[]): void {
   for (const result of results) {
-    const icon = result.ok ? 'PASS' : 'FAIL'
+    const icon = !result.ok
+      ? 'FAIL'
+      : result.severity === 'warn'
+        ? 'WARN'
+        : 'PASS'
     const suffix = result.detail ? ` - ${result.detail}` : ''
     console.log(`[${icon}] ${result.label}${suffix}`)
+  }
+}
+
+export function createReportPayload(
+  results: CheckResult[],
+  options: {
+    timestamp?: string
+    cwd?: string
+    env?: SafeEnvSummary
+  } = {},
+): RuntimeDoctorPayload {
+  return {
+    timestamp: options.timestamp ?? new Date().toISOString(),
+    cwd: options.cwd ?? process.cwd(),
+    summary: {
+      total: results.length,
+      passed: results.filter(
+        result => result.ok && result.severity !== 'warn',
+      ).length,
+      warnings: results.filter(result => result.severity === 'warn').length,
+      failed: results.filter(result => !result.ok).length,
+    },
+    env: options.env ?? serializeSafeEnvSummary(),
+    results,
   }
 }
 
@@ -344,17 +422,7 @@ function writeJsonReport(
   options: CliOptions,
   results: CheckResult[],
 ): void {
-  const payload = {
-    timestamp: new Date().toISOString(),
-    cwd: process.cwd(),
-    summary: {
-      total: results.length,
-      passed: results.filter(result => result.ok).length,
-      failed: results.filter(result => !result.ok).length,
-    },
-    env: serializeSafeEnvSummary(),
-    results,
-  }
+  const payload = createReportPayload(results)
 
   if (options.json) {
     console.log(JSON.stringify(payload, null, 2))
@@ -370,8 +438,11 @@ function writeJsonReport(
   }
 }
 
-async function main(): Promise<void> {
-  const options = parseOptions(process.argv.slice(2))
+async function runSystemCheck(argv: string[]): Promise<{
+  options: CliOptions
+  results: CheckResult[]
+}> {
+  const options = parseOptions(argv)
   const results: CheckResult[] = []
 
   results.push(checkNodeVersion())
@@ -380,6 +451,21 @@ async function main(): Promise<void> {
   results.push(...checkOpenAIEnv())
   results.push(await checkBaseUrlReachability())
   results.push(checkOllamaProcessorMode())
+  results.push(...(await checkVoiceRuntime()))
+
+  return { options, results }
+}
+
+function isDirectExecution(moduleUrl: string): boolean {
+  const invokedPath = process.argv[1]
+  if (!invokedPath) {
+    return false
+  }
+  return resolve(invokedPath) === resolve(fileURLToPath(moduleUrl))
+}
+
+async function main(): Promise<void> {
+  const { options, results } = await runSystemCheck(process.argv.slice(2))
 
   if (!options.json) {
     printResults(results)
@@ -394,10 +480,19 @@ async function main(): Promise<void> {
   }
 
   if (!options.json) {
-    console.log('\nRuntime checks completed successfully.')
+    const warningCount = results.filter(
+      result => result.severity === 'warn',
+    ).length
+    console.log(
+      warningCount > 0
+        ? `\nRuntime checks completed with ${warningCount} warning(s).`
+        : '\nRuntime checks completed successfully.',
+    )
   }
 }
 
-await main()
+if (isDirectExecution(import.meta.url)) {
+  await main()
+}
 
 export {}

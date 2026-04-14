@@ -16,13 +16,15 @@ import {
 import { getVoiceKeyterms } from '../services/voiceKeyterms.js'
 import {
   connectVoiceStream,
-  type FinalizeSource,
   isVoiceStreamAvailable,
-  type VoiceStreamConnection,
 } from '../services/voiceStreamSTT.js'
 import {
   connectLocalVoiceMode,
 } from '../services/voice/voiceMode.js'
+import type {
+  FinalizeSource,
+  VoiceStreamConnection,
+} from '../services/voice/types.js'
 import { isLocalVoiceModeEnabled } from '../voice/voiceModeEnabled.js'
 import { logForDebugging } from '../utils/debug.js'
 import { toError } from '../utils/errors.js'

@@ -30,6 +30,11 @@ const KEEPALIVE_MSG = '{"type":"KeepAlive"}'
 const CLOSE_STREAM_MSG = '{"type":"CloseStream"}'
 
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './analytics/growthbook.js'
+import type {
+  FinalizeSource,
+  VoiceStreamCallbacks,
+  VoiceStreamConnection,
+} from './voice/types.js'
 
 // ─── Constants ───────────────────────────────────────────────────────
 
@@ -47,29 +52,6 @@ export const FINALIZE_TIMEOUTS_MS = {
 }
 
 // ─── Types ──────────────────────────────────────────────────────────
-
-export type VoiceStreamCallbacks = {
-  onTranscript: (text: string, isFinal: boolean) => void
-  onError: (error: string, opts?: { fatal?: boolean }) => void
-  onClose: () => void
-  onReady: (connection: VoiceStreamConnection) => void
-}
-
-// How finalize() resolved. `no_data_timeout` means zero server messages
-// after CloseStream — the silent-drop signature (anthropics/anthropic#287008).
-export type FinalizeSource =
-  | 'post_closestream_endpoint'
-  | 'no_data_timeout'
-  | 'safety_timeout'
-  | 'ws_close'
-  | 'ws_already_closed'
-
-export type VoiceStreamConnection = {
-  send: (audioChunk: Buffer) => void
-  finalize: () => Promise<FinalizeSource>
-  close: () => void
-  isConnected: () => boolean
-}
 
 // The voice_stream endpoint returns transcript chunks and endpoint markers.
 type VoiceStreamTranscriptText = {

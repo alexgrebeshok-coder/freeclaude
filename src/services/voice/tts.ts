@@ -2,13 +2,13 @@ import { access } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
+import { execVoiceCommandNoThrow } from './exec.js'
 
 export async function isEdgeTtsAvailable(): Promise<boolean> {
-  const result = await execFileNoThrow(
+  const result = await execVoiceCommandNoThrow(
     'python3',
     ['-m', 'edge_tts', '--help'],
-    { preserveOutputOnError: false, useCwd: false },
+    { preserveOutputOnError: false },
   )
   return result.code === 0
 }
@@ -24,7 +24,7 @@ export async function synthesizeSpeech(options: {
     options.outputPath ||
     join(tmpdir(), `freeclaude-tts-${randomUUID().slice(0, 8)}.mp3`)
 
-  const result = await execFileNoThrow(
+  const result = await execVoiceCommandNoThrow(
     'python3',
     [
       '-m',
@@ -38,7 +38,7 @@ export async function synthesizeSpeech(options: {
       '--write-media',
       outputPath,
     ],
-    { maxBuffer: 1_000_000, preserveOutputOnError: false, useCwd: false },
+    { maxBuffer: 1_000_000, preserveOutputOnError: false },
   )
 
   if (result.code !== 0) {

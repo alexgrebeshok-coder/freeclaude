@@ -1,7 +1,7 @@
 import {
   spawn,
   spawnSync,
-  type ChildProcessWithoutNullStreams,
+  type ChildProcessByStdio,
 } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
@@ -18,6 +18,7 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+import type { Readable } from 'node:stream'
 import { createInterface } from 'node:readline'
 import { getStats, type UsageStats } from '../usage/usageStore.js'
 import { getVoiceStatus } from '../voice/voiceService.js'
@@ -715,18 +716,30 @@ export function getTaskTemplates(): TaskTemplate[] {
   return [...TASK_TEMPLATES]
 }
 
+export function getRecommendedRuntimeNextStep(options: {
+  providerCount: number
+  voiceTranscriptionReady: boolean
+}): string {
+  if (options.providerCount === 0) {
+    return 'Configure at least one provider, then run a sample background task.'
+  }
+
+  if (!options.voiceTranscriptionReady) {
+    return 'Voice is optional. Finish provider setup first, then install local voice input dependencies only if you want push-to-talk.'
+  }
+
+  return 'Run a sample background task to validate the local workflow.'
+}
+
 export function getRuntimeOverview(): RuntimeOverview {
   ensureTaskDirectories()
   const providers = loadConfiguredProviders()
   const voice = getVoiceStatus()
   const usage = getStats(7)
-  let recommendedNextStep = 'Run a sample background task to validate the local workflow.'
-
-  if (providers.length === 0) {
-    recommendedNextStep = 'Configure at least one provider, then run a sample background task.'
-  } else if (!voice.stt || !voice.tts) {
-    recommendedNextStep = 'Voice is optional. Finish provider setup first, then install missing voice dependencies only if you want voice mode.'
-  }
+  const recommendedNextStep = getRecommendedRuntimeNextStep({
+    providerCount: providers.length,
+    voiceTranscriptionReady: voice.transcriptionReady,
+  })
 
   return {
     freeclaudeHome: freeclaudeHome(),
@@ -872,10 +885,11 @@ function finalizeTaskFailure(
 }
 
 export async function runTaskWorker(taskId: string): Promise<TaskRecord> {
-  let task = getTask(taskId)
-  if (!task) {
+  const existingTask = getTask(taskId)
+  if (!existingTask) {
     throw new Error(`Task "${taskId}" not found`)
   }
+  let task: TaskRecord = existingTask
 
   const worktree = task.useWorktree ? createDetachedWorktree(task) : {}
   task = updateTask(task.id, current => ({
@@ -898,7 +912,7 @@ export async function runTaskWorker(taskId: string): Promise<TaskRecord> {
     appendTaskEvent(task.id, 'diagnostic', { stream: 'system', line: diagnostic })
   }
 
-  let child: ChildProcessWithoutNullStreams | null = null
+  let child: ChildProcessByStdio<null, Readable, Readable> | null = null
   let finalized = false
 
   const terminateChild = () => {
