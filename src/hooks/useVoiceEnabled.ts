@@ -8,6 +8,8 @@ import {
 
 /**
  * Combines user intent (settings.voiceEnabled) with auth + GB kill-switch.
+ * Local voice mode (`--voice`) is an explicit per-session opt-in, so it
+ * bypasses the persisted setting gate.
  * Only the auth half is memoized on authVersion — it's the expensive one
  * (cold getClaudeAIOAuthTokens memoize → sync `security` spawn, ~60ms/call,
  * ~180ms total in profile v5 when token refresh cleared the cache mid-session).
@@ -20,10 +22,8 @@ import {
 export function useVoiceEnabled(): boolean {
   const userIntent = useAppState(s => s.settings.voiceEnabled === true)
   const authVersion = useAppState(s => s.authVersion)
+  const localMode = isLocalVoiceModeEnabled()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const authed = useMemo(hasVoiceAuth, [authVersion])
-  return (
-    userIntent &&
-    (isLocalVoiceModeEnabled() || (authed && isVoiceGrowthBookEnabled()))
-  )
+  return localMode || (userIntent && authed && isVoiceGrowthBookEnabled())
 }

@@ -1,7 +1,8 @@
 {
   "name": "desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "3.0.5",
+  "description": "FreeClaude Desktop alpha orchestration client",
   "type": "module",
   "scripts": {
     "dev": "vite",

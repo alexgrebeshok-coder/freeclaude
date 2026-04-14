@@ -2,15 +2,15 @@
 
 # 🆓 FreeClaude v3
 
-**The Best Free AI Coding Agent — Fallback Chain, Semantic Memory, Voice, MCP, PM Tools**
+**Local-first AI coding workspace — multi-provider, memory, voice, MCP**
 
 Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible provider.
 
-[![v3.0.0](https://img.shields.io/badge/version-3.0.0-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
+[![v3.0.5](https://img.shields.io/badge/version-3.0.5-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
 [![Phase 0-4 Done](https://img.shields.io/badge/Phase-0..4%20Done%20%7C%20Launch%20Ready-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
 [![Tests](https://img.shields.io/badge/tests-70%2F70%20pass-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude)
-[![Rust](https://img.shields.io/badge/Rust-Tauri%20Desktop-orange)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
-[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-blue)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/extension)
+[![Desktop](https://img.shields.io/badge/Desktop-Alpha-orange)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
+[![VS Code](https://img.shields.io/badge/VS%20Code-Light%20Companion-blue)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/extension)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 [English](#english) · [Русский](#русский)
@@ -21,14 +21,27 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 
 ## 🇷🇺 Русский
 
+### Статус поверхностей
+
+- **CLI** — основная поддерживаемая runtime-поверхность
+- **Desktop** — **alpha** orchestration surface
+- **VS Code extension** — **light companion**, не primary surface
+- **Bridge / remote / CCR / Anthropic-only inherited paths** — не опорная primary surface этого цикла
+
+### Engineering truth
+
+- `bun run smoke` — текущая runtime-проверка для основного CLI-пути
+- `npm run typecheck:desktop-extension` — текущий зелёный typecheck baseline для desktop + extension
+- Глобальный `npm run typecheck` пока включает inherited paths и ещё не является зелёным release gate
+
 ### Что нового в v3
 
 | Фаза | Фичи | Статус |
 |------|-------|--------|
 | **Phase 0** | 🔧 Quality foundation, branding, CI/CD | ✅ |
 | **Phase 1** | 🗂️ `/undo`, `/repo-map`, Voice, Fallback, Memory, Cost tracking | ✅ |
-| **Phase 2** | 🪝 Hooks (26 types), Plugins (20K+ lines), Desktop App (Tauri) | ✅ |
-| **Phase 3** | 💻 VS Code Extension, MCP servers, Background Agents | ✅ |
+| **Phase 2** | 🪝 Hooks (26 types), Plugins (20K+ lines), Desktop app (alpha) | ✅ |
+| **Phase 3** | 💻 VS Code companion, MCP servers, Background Agents | ✅ |
 | **Phase 4** | 🚀 Launch: npm, Homebrew, Docker | ✅ |
 
 ### Уникальные фичи (нет у конкурентов)
@@ -48,12 +61,15 @@ git clone https://github.com/alexgrebeshok-coder/freeclaude.git
 cd freeclaude
 bun install && bun run build
 
-# 2. Configure providers
-cp .freeclaude.example.json ~/.freeclaude.json
-# Edit ~/.freeclaude.json with your API keys
+# 2. Run guided setup
+node dist/cli.mjs --setup
 
-# 3. Start coding!
+# 3. Start coding
 node dist/cli.mjs
+
+# 4. Inside FreeClaude
+/doctor
+/run summarize changed files
 ```
 
 ### Поддерживаемые провайдеры
@@ -142,6 +158,19 @@ source ~/.zshrc
 | `/memory` | Редактировать CLAUDE.md файлы |
 | `/status` | Текущая сессия и провайдер |
 
+### Task Protocol Preview
+
+Machine-readable local task interface for desktop/backend orchestration:
+
+```bash
+freeclaude task list --json
+freeclaude task run --json "summarize changed files"
+freeclaude task resume --json <task-id>
+freeclaude task cancel --json <task-id>
+```
+
+Task metadata and structured events are written to `~/.freeclaude/tasks/<task-id>/`.
+
 ### Hook System
 
 FreeClaude includes 5 pre-configured safety hooks:
@@ -183,8 +212,9 @@ FreeClaude includes 5 pre-configured safety hooks:
 git clone https://github.com/alexgrebeshok-coder/freeclaude.git
 cd freeclaude
 bun install && bun run build
-cp .freeclaude.example.json ~/.freeclaude.json
+node dist/cli.mjs --setup
 node dist/cli.mjs
+# then run /doctor and /run summarize changed files
 ```
 
 ### Config (`~/.freeclaude.json`)
@@ -203,6 +233,19 @@ node dist/cli.mjs
   ]
 }
 ```
+
+### Task Protocol Preview
+
+Machine-readable local task interface for desktop/backend orchestration:
+
+```bash
+freeclaude task list --json
+freeclaude task run --json "summarize changed files"
+freeclaude task resume --json <task-id>
+freeclaude task cancel --json <task-id>
+```
+
+Task metadata and structured events are written to `~/.freeclaude/tasks/<task-id>/`.
 
 ### Free Providers (No API Key Needed)
 

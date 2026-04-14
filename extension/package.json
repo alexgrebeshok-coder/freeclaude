@@ -1,8 +1,8 @@
 {
   "name": "freeclaude",
   "displayName": "FreeClaude",
-  "description": "Free AI Coding Agent — multi-provider, no subscriptions",
-  "version": "3.0.0",
+  "description": "Light companion extension for FreeClaude Desktop and CLI",
+  "version": "3.0.5",
   "publisher": "alexgrebeshok",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages", "Machine Learning", "Chat"],

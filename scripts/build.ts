@@ -69,6 +69,24 @@ const result = await Bun.build({
     {
       name: 'bun-bundle-shim',
       setup(build) {
+        const featureShim = `export function feature(name) {
+  switch (name) {
+${Object.entries(featureFlags)
+  .map(([featureName, enabled]) => `    case ${JSON.stringify(featureName)}: return ${enabled};`)
+  .join('\n')}
+    default: return false;
+  }
+}`
+        const featureCallPattern = /feature\(\s*(['"])([A-Z0-9_]+)\1\s*\)/g
+
+        function getSourceLoader(
+          filePath: string,
+        ): 'js' | 'jsx' | 'ts' | 'tsx' {
+          if (filePath.endsWith('.tsx')) return 'tsx'
+          if (filePath.endsWith('.ts')) return 'ts'
+          if (filePath.endsWith('.jsx')) return 'jsx'
+          return 'js'
+        }
         const internalFeatureStubModules = new Map([
           [
             '../daemon/workerRegistry.js',
@@ -110,10 +128,37 @@ export async function handleBgFlag() { throw new Error("Background sessions are 
         build.onLoad(
           { filter: /.*/, namespace: 'bun-bundle-shim' },
           () => ({
-            contents: `export function feature(name) { return false; }`,
+            contents: featureShim,
             loader: 'js',
           }),
         )
+
+        build.onLoad({ filter: /\.[jt]sx?$/ }, args => {
+          if (
+            !args.path.includes('/src/') &&
+            !args.path.includes('\\src\\')
+          ) {
+            return
+          }
+
+          const original = readFileSync(args.path, 'utf8')
+          if (
+            (!original.includes("from 'bun:bundle'") &&
+              !original.includes('from "bun:bundle"')) ||
+            !original.includes('feature(')
+          ) {
+            return
+          }
+
+          return {
+            contents: original.replace(
+              featureCallPattern,
+              (_match, _quote, featureName) =>
+                String(Boolean(featureFlags[featureName])),
+            ),
+            loader: getSourceLoader(args.path),
+          }
+        })
 
         build.onResolve(
           { filter: /^\.\.\/(daemon\/workerRegistry|daemon\/main|cli\/bg|cli\/handlers\/templateJobs|environment-runner\/main|self-hosted-runner\/main)\.js$/ },

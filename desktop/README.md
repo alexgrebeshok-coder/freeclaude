@@ -1,14 +1,18 @@
-# FreeClaude Desktop
+# FreeClaude Desktop (Alpha)
 
-Native desktop app for FreeClaude — built with [Tauri](https://tauri.app) + vanilla TypeScript.
+Alpha desktop orchestration client for FreeClaude, built with [Tauri](https://tauri.app) + vanilla TypeScript.
+
+## Current Status
+
+- Alpha surface, not the primary product workflow yet
+- Local shell for desktop packaging and runtime integration work
+- Not yet a full task inbox, review queue, or multi-agent command center
 
 ## Features
 
-- 🖥 Native macOS/Windows/Linux app
-- 💬 Chat interface with FreeClaude CLI
-- 📡 Provider status panel
-- 💰 Cost tracking dashboard
-- ⌨️ Terminal-style input
+- 🖥 Native macOS/Windows/Linux shell
+- 🔌 Local integration point for the FreeClaude CLI
+- 🧪 Surface for desktop runtime and packaging iteration
 
 ## Development
 
@@ -25,31 +29,19 @@ cd desktop
 npm run tauri build
 ```
 
-## Architecture
+## Near-term Direction
 
-```
-┌──────────────────────────────┐
-│  Tauri Window (HTML/CSS/JS)  │
-│  ┌────────┬──────────────┐  │
-│  │ Header │ Status Bar   │  │
-│  ├────────┴──────────────┤  │
-│  │                      │  │
-│  │  Chat Messages       │  │
-│  │                      │  │
-│  ├──────────────────────┤  │
-│  │  Input + Send        │  │
-│  └──────────────────────┘  │
-├──────────────────────────────┤
-│  Rust Backend               │
-│  - chat() → FreeClaude CLI  │
-│  - get_providers()          │
-│  - get_costs()              │
-│  - get_version()            │
-└──────────────────────────────┘
-```
+The intended direction is a desktop command center with:
+
+- Inbox/Review
+- Running Tasks
+- New Task
+- Providers and Runtime
+- Usage/Cost
+- Memory Vault
 
 ## Requirements
 
 - Rust 1.70+
 - Node.js 18+
-- FreeClaude CLI (`npx freeclaude` or `~/.freeclaude/bin/freeclaude`)
+- FreeClaude CLI (`freeclaude` on PATH or a local build)
