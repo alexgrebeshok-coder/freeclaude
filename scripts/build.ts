@@ -239,6 +239,11 @@ const handler = {
 const stub = new Proxy(noop, handler);
 export default stub;
 export const __stub = true;
+// audio-capture-napi named exports (must be stubs so loadAudioNapi doesn't crash)
+export const isNativeAudioAvailable = () => false;
+export const isNativeRecordingActive = () => false;
+export const startNativeRecording = () => false;
+export const stopNativeRecording = noop;
 // Named exports for all known imports
 export const SandboxViolationStore = null;
 export const SandboxManager = new Proxy({}, { get: () => noop });
