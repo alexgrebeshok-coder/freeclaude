@@ -4,15 +4,19 @@ Alpha desktop orchestration client for FreeClaude, built with [Tauri](https://ta
 
 ## Current Status
 
-- Alpha surface, not the primary product workflow yet
-- Local shell for desktop packaging and runtime integration work
-- Not yet a full task inbox, review queue, or multi-agent command center
+- Alpha orchestration surface for the local FreeClaude runtime
+- Real task workspace backed by `freeclaude task ... --json`
+- Built-in task templates, recurring local schedules, live task polling, and runtime/vault path visibility
+- Still not a full review/approval queue or hosted multi-agent control plane
 
 ## Features
 
 - 🖥 Native macOS/Windows/Linux shell
-- 🔌 Local integration point for the FreeClaude CLI
-- 🧪 Surface for desktop runtime and packaging iteration
+- 🔌 Direct local integration with the FreeClaude CLI
+- 📥 Inbox/Review, Running Tasks, New Task, Providers & Runtime, Usage/Cost, and Memory Vault screens
+- 🚀 Launch, list, resume, cancel, and inspect local background tasks
+- 📡 Runtime/provider/cost visibility, including optional voice readiness diagnostics
+- 🧪 Alpha surface for desktop runtime and packaging iteration
 
 ## Development
 
@@ -29,16 +33,14 @@ cd desktop
 npm run tauri build
 ```
 
-## Near-term Direction
+## Current Gaps
 
-The intended direction is a desktop command center with:
+The desktop app is now a real orchestration alpha, but it still needs:
 
-- Inbox/Review
-- Running Tasks
-- New Task
-- Providers and Runtime
-- Usage/Cost
-- Memory Vault
+- richer live streaming beyond local event polling
+- approval prompts and diff/worktree actions
+- stronger review queue workflows
+- vault editing and Obsidian-facing actions
 
 ## Requirements
 

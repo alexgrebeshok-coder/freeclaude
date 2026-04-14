@@ -6,23 +6,28 @@
   "publisher": "alexgrebeshok",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages", "Machine Learning", "Chat"],
-  "activationEvents": ["onCommand:freeclaude.chat", "onCommand:freeclaude.explain", "onCommand:freeclaude.fix"],
+  "activationEvents": ["onStartupFinished", "onCommand:freeclaude.chat", "onCommand:freeclaude.explain", "onCommand:freeclaude.fix", "onCommand:freeclaude.tasks"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "freeclaude.chat",
-        "title": "FreeClaude: Chat",
+        "title": "FreeClaude: Queue Prompt Task",
         "category": "FreeClaude"
       },
       {
         "command": "freeclaude.explain",
-        "title": "FreeClaude: Explain Code",
+        "title": "FreeClaude: Send Selection to Task",
         "category": "FreeClaude"
       },
       {
         "command": "freeclaude.fix",
-        "title": "FreeClaude: Fix Error",
+        "title": "FreeClaude: Send Diagnostics to Task",
+        "category": "FreeClaude"
+      },
+      {
+        "command": "freeclaude.tasks",
+        "title": "FreeClaude: Show Tasks",
         "category": "FreeClaude"
       }
     ],

@@ -24,8 +24,8 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 ### Статус поверхностей
 
 - **CLI** — основная поддерживаемая runtime-поверхность
-- **Desktop** — **alpha** orchestration surface
-- **VS Code extension** — **light companion**, не primary surface
+- **Desktop** — **alpha** orchestration workspace: inbox/review, running tasks, new task, providers/runtime, usage/cost, memory vault
+- **VS Code extension** — **light companion**: отправляет context в background tasks и показывает task status, не primary surface
 - **Bridge / remote / CCR / Anthropic-only inherited paths** — не опорная primary surface этого цикла
 
 ### Engineering truth
@@ -167,9 +167,16 @@ freeclaude task list --json
 freeclaude task run --json "summarize changed files"
 freeclaude task resume --json <task-id>
 freeclaude task cancel --json <task-id>
+freeclaude task template list --json
+freeclaude task template run --json summarize-changes
+freeclaude task schedule run --json --every 60 --template summarize-changes
+freeclaude task schedule list --json
+freeclaude task schedule cancel --json <schedule-id>
 ```
 
 Task metadata and structured events are written to `~/.freeclaude/tasks/<task-id>/`.
+Artifacts are written to `~/.freeclaude/artifacts/<task-id>/`.
+Vault notes are written to `~/.freeclaude/vault/tasks/<date>/<task-id>.md`.
 
 ### Hook System
 
@@ -243,9 +250,16 @@ freeclaude task list --json
 freeclaude task run --json "summarize changed files"
 freeclaude task resume --json <task-id>
 freeclaude task cancel --json <task-id>
+freeclaude task template list --json
+freeclaude task template run --json summarize-changes
+freeclaude task schedule run --json --every 60 --template summarize-changes
+freeclaude task schedule list --json
+freeclaude task schedule cancel --json <schedule-id>
 ```
 
 Task metadata and structured events are written to `~/.freeclaude/tasks/<task-id>/`.
+Artifacts are written to `~/.freeclaude/artifacts/<task-id>/`.
+Vault notes are written to `~/.freeclaude/vault/tasks/<date>/<task-id>.md`.
 
 ### Free Providers (No API Key Needed)
 
