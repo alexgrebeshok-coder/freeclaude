@@ -333,6 +333,8 @@ let activeRecorder: ChildProcess | null = null
 let nativeRecordingActive = false
 let activeRecorderStoppedPromise: Promise<void> | null = null
 let resolveActiveRecorderStopped: (() => void) | null = null
+let activeRecorderBytes = 0
+let activeRecorderStderr = ''
 
 function createActiveRecorderStopPromise(): void {
   activeRecorderStoppedPromise = new Promise(resolve => {
@@ -346,6 +348,16 @@ function createActiveRecorderStopPromise(): void {
 
 function settleActiveRecorderStop(): void {
   resolveActiveRecorderStopped?.()
+}
+
+export function getRecordingStats(): {
+  bytesReceived: number
+  stderr: string
+} {
+  return {
+    bytesReceived: activeRecorderBytes,
+    stderr: activeRecorderStderr,
+  }
 }
 
 export async function startRecording(
@@ -418,7 +430,10 @@ function startSoxRecording(
 ): boolean {
   const useSilenceDetection = options?.silenceDetection !== false
 
-  // Record raw PCM: 16 kHz, 16-bit signed, mono, to stdout.
+  // Record 16-bit mono PCM to stdout and let SoX resample to 16 kHz with a
+  // rate effect. On macOS, asking the input device itself for 16 kHz produces
+  // noisy warnings and can be less consistent than capturing at the hardware
+  // rate and resampling in-process.
   // --buffer 1024 forces SoX to flush audio in small chunks instead of
   // accumulating data in its internal buffer. Without this, SoX may buffer
   // several seconds of audio before writing anything to stdout when piped,
@@ -427,17 +442,17 @@ function startSoxRecording(
     '-q', // quiet
     '--buffer',
     '1024',
-    '-t',
-    'raw',
-    '-r',
-    String(RECORDING_SAMPLE_RATE),
     '-e',
-    'signed',
+    'signed-integer',
     '-b',
     '16',
     '-c',
     String(RECORDING_CHANNELS),
+    '-t',
+    'raw',
     '-', // stdout
+    'rate',
+    String(RECORDING_SAMPLE_RATE),
   ]
 
   // Add silence detection filter (auto-stop on silence).
@@ -459,14 +474,21 @@ function startSoxRecording(
   })
 
   activeRecorder = child
+  activeRecorderBytes = 0
+  activeRecorderStderr = ''
   createActiveRecorderStopPromise()
 
   child.stdout?.on('data', (chunk: Buffer) => {
+    activeRecorderBytes += chunk.length
     onData(chunk)
   })
 
-  // Consume stderr to prevent backpressure
-  child.stderr?.on('data', () => {})
+  // Consume stderr to prevent backpressure while retaining recent diagnostics.
+  child.stderr?.on('data', (chunk: Buffer) => {
+    activeRecorderStderr = `${activeRecorderStderr}${chunk.toString()}`
+      .trim()
+      .slice(-2000)
+  })
 
   child.on('close', () => {
     activeRecorder = null
@@ -509,14 +531,20 @@ function startArecordRecording(
   })
 
   activeRecorder = child
+  activeRecorderBytes = 0
+  activeRecorderStderr = ''
   createActiveRecorderStopPromise()
 
   child.stdout?.on('data', (chunk: Buffer) => {
+    activeRecorderBytes += chunk.length
     onData(chunk)
   })
 
-  // Consume stderr to prevent backpressure
-  child.stderr?.on('data', () => {})
+  child.stderr?.on('data', (chunk: Buffer) => {
+    activeRecorderStderr = `${activeRecorderStderr}${chunk.toString()}`
+      .trim()
+      .slice(-2000)
+  })
 
   child.on('close', () => {
     activeRecorder = null

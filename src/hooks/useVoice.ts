@@ -367,7 +367,10 @@ export function useVoice({
         // from "backend never became ready". For local voice, readiness is
         // immediate and buffered recorder chunks may arrive during drain.
         const wsConnected = useLocalVoiceMode || everConnectedRef.current
-        const hadAudioSignal = hasAudioSignalRef.current
+        const recordingStats = voiceModule?.getRecordingStats?.()
+        const hadAudioSignal =
+          hasAudioSignalRef.current ||
+          (recordingStats?.bytesReceived ?? 0) > 0
         const finalizePromise: Promise<FinalizeSource | undefined> =
           connectionRef.current
             ? connectionRef.current.finalize()
@@ -375,6 +378,7 @@ export function useVoice({
         return finalizePromise.then(finalizeSource => ({
           finalizeSource,
           hadAudioSignal,
+          recordingStats,
           wsConnected,
         }))
       })
@@ -382,6 +386,7 @@ export function useVoice({
         if (isStale()) return
         const finalizeSource = finalizeResult?.finalizeSource
         const hadAudioSignal = finalizeResult?.hadAudioSignal ?? false
+        const recordingStats = finalizeResult?.recordingStats
         const wsConnected = finalizeResult?.wsConnected ?? false
         // Silent-drop replay: when the server accepted audio (wsConnected),
         // the mic captured real signal (hadAudioSignal), but finalize timed
@@ -515,7 +520,9 @@ export function useVoice({
           } else if (!hadAudioSignal) {
             // Distinguish silent mic (capture issue) from speech not recognized.
             onErrorRef.current?.(
-              'No audio detected from microphone. Check that the correct input device is selected and that Claude Code has microphone access.',
+              recordingStats?.stderr
+                ? `No audio detected from microphone. SoX reported: ${recordingStats.stderr}`
+                : 'No audio detected from microphone. Check that the correct input device is selected and that Claude Code has microphone access.',
             )
           } else {
             onErrorRef.current?.('No speech detected.')
