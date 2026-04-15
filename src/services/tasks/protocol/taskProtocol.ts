@@ -340,7 +340,7 @@ export function startDetachedTask(prompt: string, metadata: Partial<TaskMetadata
 
   appendJobRecord(job)
   writeTaskState(job)
-  appendTaskEvent(id, { type: 'task_started', prompt, cwd, pid: runner.pid, ...taskMetadata })
+  appendTaskEvent(id, { type: 'task_started', prompt, pid: runner.pid, ...taskMetadata })
   return job
 }
 
