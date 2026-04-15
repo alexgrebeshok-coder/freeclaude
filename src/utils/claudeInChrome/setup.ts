@@ -1,4 +1,3 @@
-import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
 import { chmod, mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -8,6 +7,18 @@ import {
   getIsNonInteractiveSession,
   getSessionBypassPermissionsMode,
 } from '../../bootstrap/state.js'
+
+let _BROWSER_TOOLS: typeof import('@ant/claude-for-chrome-mcp').BROWSER_TOOLS | undefined
+function getBrowserTools() {
+  if (!_BROWSER_TOOLS) {
+    try {
+      _BROWSER_TOOLS = require('@ant/claude-for-chrome-mcp').BROWSER_TOOLS
+    } catch {
+      return undefined
+    }
+  }
+  return _BROWSER_TOOLS
+}
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
 import { isInBundledMode } from '../bundledMode.js'
@@ -94,7 +105,7 @@ export function setupClaudeInChrome(): {
   systemPrompt: string
 } {
   const isNativeBuild = isInBundledMode()
-  const allowedTools = BROWSER_TOOLS.map(
+  const allowedTools = (getBrowserTools() || []).map(
     tool => `mcp__claude-in-chrome__${tool.name}`,
   )
 

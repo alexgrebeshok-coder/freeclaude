@@ -3,16 +3,71 @@
 /**
  * FreeClaude — Claude Code без авторизации
  *
- * Если dist/cli.mjs существует, запускает.
- * Иначе просит собрать проект.
+ * Loads provider config from ~/.freeclaude.json, sets env vars,
+ * then launches dist/cli.mjs.
  */
 
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
+import { homedir } from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distPath = join(__dirname, '..', 'dist', 'cli.mjs')
+
+// ─── Load provider config from ~/.freeclaude.json ─────────────────────────
+
+const configPath = process.env.FREECLAUDE_CONFIG_PATH || join(homedir(), '.freeclaude.json')
+let hasProvider = false
+
+if (!process.env.CLAUDE_CODE_USE_OPENAI && existsSync(configPath)) {
+  try {
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+    const providers = [...(config.providers || [])].sort(
+      (a, b) => (a.priority ?? 999) - (b.priority ?? 999),
+    )
+
+    // If there's an active provider, move it to front
+    if (config.activeProvider) {
+      const idx = providers.findIndex(p => p.name === config.activeProvider)
+      if (idx > 0) {
+        const [active] = providers.splice(idx, 1)
+        if (config.activeModel) active.model = config.activeModel
+        providers.unshift(active)
+      }
+    }
+
+    for (const p of providers) {
+      let apiKey = p.apiKey
+      if (typeof apiKey === 'string' && apiKey.startsWith('env:')) {
+        apiKey = process.env[apiKey.slice(4)] || ''
+      }
+      if (apiKey && apiKey !== '') {
+        hasProvider = true
+        process.env.CLAUDE_CODE_USE_OPENAI = '1'
+        process.env.OPENAI_API_KEY = apiKey
+        process.env.OPENAI_BASE_URL = p.baseUrl
+        process.env.OPENAI_MODEL = p.model
+        break
+      }
+    }
+  } catch {
+    // Config parse error — fall through
+  }
+}
+
+// Fallback: check env vars directly
+if (!hasProvider && !process.env.CLAUDE_CODE_USE_OPENAI) {
+  if (process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY || process.env.ZAI_API_KEY) {
+    process.env.CLAUDE_CODE_USE_OPENAI = '1'
+    if (!process.env.OPENAI_API_KEY) {
+      process.env.OPENAI_API_KEY = process.env.ZAI_API_KEY || process.env.CODEX_API_KEY || ''
+    }
+    hasProvider = true
+  }
+}
+
+// ─── Launch ───────────────────────────────────────────────────────────────
 
 if (existsSync(distPath)) {
   await import(pathToFileURL(distPath).href)

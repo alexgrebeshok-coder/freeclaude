@@ -48,15 +48,13 @@ const featureFlags: Record<string, boolean> = {
   PROMPT_CACHE_BREAK_DETECTION: false,
 }
 
-const result = await Bun.build({
-  entrypoints: ['./src/entrypoints/cli.tsx'],
+const sharedBuildOptions = {
   outdir: './dist',
-  target: 'node',
-  format: 'esm',
+  target: 'node' as const,
+  format: 'esm' as const,
   splitting: false,
-  sourcemap: 'external',
+  sourcemap: 'external' as const,
   minify: false,
-  naming: 'cli.bundle.mjs',
   define: {
     // MACRO.* build-time constants
     // Keep the internal compatibility version high enough to pass
@@ -339,14 +337,31 @@ export const SeverityNumber = {};
     '@azure/identity',
     'google-auth-library',
   ],
+}
+
+const cliResult = await Bun.build({
+  entrypoints: ['./src/entrypoints/cli.tsx'],
+  naming: 'cli.bundle.mjs',
+  ...sharedBuildOptions,
 })
 
-if (!result.success) {
-  console.error('Build failed:')
-  for (const log of result.logs) {
-    console.error(log)
+const telegramResult = await Bun.build({
+  entrypoints: ['./src/telegram/standalone.ts'],
+  naming: 'telegram.mjs',
+  ...sharedBuildOptions,
+})
+
+for (const [name, result] of [
+  ['cli', cliResult],
+  ['telegram', telegramResult],
+] as const) {
+  if (!result.success) {
+    console.error(`Build failed (${name}):`)
+    for (const log of result.logs) {
+      console.error(log)
+    }
+    process.exit(1)
   }
-  process.exit(1)
 }
 
 // Don't overwrite cli.mjs — it contains the FreeClaude entry point with
@@ -368,4 +383,4 @@ await import('./cli.bundle.mjs');
   )
 }
 
-console.log(`✓ Built freeclaude v${version} → dist/cli.mjs`)
+console.log(`✓ Built freeclaude v${version} → dist/cli.mjs, dist/telegram.mjs`)

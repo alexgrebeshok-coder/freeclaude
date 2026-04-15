@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "freeclaude": "./bin/freeclaude",
-    "fc": "./bin/freeclaude"
+    "fc": "./bin/freeclaude",
+    "freeclaude-telegram": "./bin/freeclaude-telegram"
   },
   "files": [
     "bin/",
@@ -89,6 +90,7 @@
     "fuse.js": "7.1.0",
     "get-east-asian-width": "1.5.0",
     "google-auth-library": "9.15.1",
+    "grammy": "^1.42.0",
     "https-proxy-agent": "7.0.6",
     "ignore": "7.0.5",
     "indent-string": "5.0.0",
