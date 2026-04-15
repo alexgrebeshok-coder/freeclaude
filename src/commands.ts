@@ -67,6 +67,7 @@ import memories from './commands/memories/index.js'
 import daily from './commands/daily/index.js'
 import vault from './commands/vault/index.js'
 import heartbeat from './commands/heartbeat/index.js'
+import routine from './commands/routine/index.js'
 import providers from './commands/providers/index.js'
 import modelCmd from './commands/model/index.js'
 import cost from './commands/cost/index.js'
@@ -343,6 +344,7 @@ const COMMANDS = memoize((): Command[] => [
   daily,
   vault,
   heartbeat,
+  routine,
   usageReport,
   vim,
   ...(webCmd ? [webCmd] : []),
@@ -667,6 +669,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   daily, // Daily notes
   vault, // Vault notes management
   heartbeat, // System health check
+  routine, // Routine management
   providers, // Show provider config and test connectivity
   modelCmd, // Switch active model/provider
   cost, // Cost tracking summary
