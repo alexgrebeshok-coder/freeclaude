@@ -21,6 +21,13 @@ import { basename, join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { createInterface } from 'node:readline'
 import { getStats, type UsageStats } from '../usage/usageStore.js'
+import {
+  archiveTaskContext as archiveTaskContextFromVaultStore,
+  forgetTaskContext as forgetTaskContextFromVaultStore,
+  listVaultTasks as listVaultTasksFromVaultStore,
+  openVaultDirectoryPath as openVaultDirectoryPathFromVaultStore,
+  setTaskPinned as setTaskPinnedFromVaultStore,
+} from '../vault/vaultStore.js'
 import { getVoiceStatus } from '../voice/voiceService.js'
 import { getOrderedConfiguredProviders, readFreeClaudeConfig } from '../../utils/freeclaudeConfig.ts'
 
@@ -1132,62 +1139,26 @@ export function reviewTask(
 }
 
 export function setTaskPinned(taskId: string, pinned: boolean): TaskRecord {
-  const task = updateTask(taskId, {
-    pinned,
-    updatedAt: nowIso(),
-  })
-  rewriteTaskNoteFrontmatter(task)
-  return task
+  return setTaskPinnedFromVaultStore(taskId, pinned) as TaskRecord
 }
 
 export function archiveTaskContext(taskId: string): TaskRecord {
-  const task = getTask(taskId)
-  if (!task) {
-    throw new Error(`Task "${taskId}" not found`)
-  }
-  if (task.vaultNotePath && existsSync(task.vaultNotePath)) {
-    const archivedPath = join(vaultArchiveDir(), basename(task.vaultNotePath))
-    renameSync(task.vaultNotePath, archivedPath)
-    return updateTask(taskId, {
-      archivedAt: nowIso(),
-      vaultNotePath: archivedPath,
-      updatedAt: nowIso(),
-    })
-  }
-  return updateTask(taskId, {
-    archivedAt: nowIso(),
-    updatedAt: nowIso(),
-  })
+  return archiveTaskContextFromVaultStore(taskId) as TaskRecord
 }
 
 export function forgetTaskContext(taskId: string): TaskRecord {
-  const task = getTask(taskId)
-  if (!task) {
-    throw new Error(`Task "${taskId}" not found`)
-  }
-  if (task.vaultNotePath && existsSync(task.vaultNotePath)) {
-    unlinkSync(task.vaultNotePath)
-  }
-  return updateTask(taskId, {
-    vaultNotePath: undefined,
-    archivedAt: undefined,
-    updatedAt: nowIso(),
-  })
+  return forgetTaskContextFromVaultStore(taskId) as TaskRecord
 }
 
 export function listVaultTasks(options: {
   includeArchived?: boolean
   limit?: number
 } = {}): TaskRecord[] {
-  return listTasks({
-    includeArchived: options.includeArchived,
-    limit: options.limit,
-  }).filter(task => Boolean(task.vaultNotePath))
+  return listVaultTasksFromVaultStore(options) as TaskRecord[]
 }
 
 export function openVaultDirectoryPath(): string {
-  ensureTaskDirectories()
-  return vaultDir()
+  return openVaultDirectoryPathFromVaultStore()
 }
 
 export function getTaskDetail(taskId: string, options: {

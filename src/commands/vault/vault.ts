@@ -1,12 +1,10 @@
-import type { LocalCommandCall } from '../../types/command.js'
 import {
   listVaultTasks,
   openVaultDirectoryPath,
-  getTask,
   setTaskPinned,
   archiveTaskContext,
   forgetTaskContext,
-} from '../../services/tasks/taskManager.js'
+} from '../../services/vault/vaultStore.js'
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, basename } from 'path'
 import { homedir } from 'os'
@@ -136,7 +134,7 @@ function formatList(entries: VaultEntry[], showType = true): string {
   return lines.join('\n')
 }
 
-export const call: LocalCommandCall = async (args) => {
+export async function call(args: string): Promise<{ type: 'text'; value: string }> {
   const trimmed = args.trim()
   const [subcommand, ...rest] = trimmed.split(/\s+/)
   const subArgs = rest.join(' ')
