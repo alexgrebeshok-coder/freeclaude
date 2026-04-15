@@ -39,7 +39,10 @@
     "src/services/memory/decay.ts",
     "src/services/memory/autoRemember.ts",
     "src/services/memory/autoIndex.ts",
-    "src/services/memory/consolidation.ts"
+    "src/services/memory/consolidation.ts",
+    "src/services/heartbeat/heartbeat.ts",
+    "src/services/agents/agentBridge.ts",
+    "src/services/agents/agentProtocol.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

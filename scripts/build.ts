@@ -27,7 +27,7 @@ const featureFlags: Record<string, boolean> = {
   ABLATION_BASELINE: false,
   DUMP_SYSTEM_PROMPT: false,
   CACHED_MICROCOMPACT: false,
-  COORDINATOR_MODE: false,
+  COORDINATOR_MODE: true,
   CONTEXT_COLLAPSE: false,
   COMMIT_ATTRIBUTION: false,
   TEAMMEM: false,
@@ -40,6 +40,12 @@ const featureFlags: Record<string, boolean> = {
   BUDDY: false,
   CHICAGO_MCP: false,
   COWORKER_TYPE_TELEMETRY: false,
+  BUILTIN_EXPLORE_PLAN_AGENTS: true,
+  FORK_SUBAGENT: true,
+  AGENT_MEMORY_SNAPSHOT: true,
+  BASH_CLASSIFIER: false,
+  VERIFICATION_AGENT: false,
+  PROMPT_CACHE_BREAK_DETECTION: false,
 }
 
 const result = await Bun.build({
