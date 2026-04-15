@@ -42,6 +42,20 @@ export const call: LocalCommandCall = async (args) => {
     indexMemory(key!, value!).catch(() => {})
   }).catch(() => {})
 
+  // Index into GBrain for hybrid search (async, non-blocking)
+  import('../../services/memory/gbrainClient.js').then(({ importToGBrain, isGBrainAvailable }) => {
+    if (isGBrainAvailable()) {
+      const { writeFileSync, existsSync, mkdirSync } = require('fs')
+      const { join } = require('path')
+      const { homedir } = require('os')
+      const dir = join(homedir(), '.freeclaude')
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      const tmpPath = join(dir, `memory-${key}.md`)
+      writeFileSync(tmpPath, `# ${key}\n\n${value}\n\nTags: ${(tags ?? []).join(', ')}\n`, 'utf-8')
+      importToGBrain(tmpPath).catch(() => {})
+    }
+  }).catch(() => {})
+
   const tagStr = tags?.length ? ` [${tags.join(', ')}]` : ''
   return {
     type: 'text',

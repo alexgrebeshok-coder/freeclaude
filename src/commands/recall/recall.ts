@@ -11,12 +11,12 @@ export const call: LocalCommandCall = async (args) => {
         'Usage: /recall <key|query>',
         '',
         'Searches memories by key, value, or tags.',
-        'If Ollama is running with nomic-embed-text, also does semantic search.',
+        'Sources: exact match → keyword → Ollama semantic → GBrain hybrid',
         '',
         'Examples:',
         '  /recall name          — exact key match',
         '  /recall project       — search by key/value/tags',
-        '  /recall что мы делали — semantic search (if Ollama available)',
+        '  /recall что мы делали — semantic + hybrid search',
       ].join('\n'),
     }
   }
@@ -24,7 +24,9 @@ export const call: LocalCommandCall = async (args) => {
   // Try exact match first
   const exact = recallEntry(trimmed)
   if (exact) {
-    return formatEntry(exact)
+    // Record access for decay tracking
+    recordAccessSafe(exact.key)
+    return formatEntry(exact, 'exact')
   }
 
   // Keyword search
@@ -38,10 +40,21 @@ export const call: LocalCommandCall = async (args) => {
       semanticResults = await semanticSearch(trimmed, 3)
     }
   } catch {
-    // Semantic search not available — use keyword results only
+    // Semantic search not available
   }
 
-  // Merge results (keyword first, then semantic if not duplicate)
+  // Try GBrain hybrid search
+  let gbrainResults: Array<{ content: string; score: number; source: string }> = []
+  try {
+    const { searchGBrain, isGBrainAvailable } = await import('../../services/memory/gbrainClient.js')
+    if (isGBrainAvailable()) {
+      gbrainResults = await searchGBrain(trimmed, { topK: 3, threshold: 0.4 })
+    }
+  } catch {
+    // GBrain not available
+  }
+
+  // Merge results (keyword first, then semantic, then GBrain)
   const seenKeys = new Set(results.map(r => r.key))
   for (const sr of semanticResults) {
     if (!seenKeys.has(sr.key)) {
@@ -56,6 +69,28 @@ export const call: LocalCommandCall = async (args) => {
     }
   }
 
+  // Add GBrain results as synthetic entries
+  for (const gr of gbrainResults) {
+    const gKey = `gbrain:${gr.source}`
+    if (!seenKeys.has(gKey)) {
+      results.push({
+        key: gKey,
+        value: gr.content,
+        createdAt: '',
+        updatedAt: '',
+        tags: ['gbrain'],
+      } as MemoryEntry)
+      seenKeys.add(gKey)
+    }
+  }
+
+  // Record access for all found keys
+  for (const r of results) {
+    if (!r.key.startsWith('gbrain:')) {
+      recordAccessSafe(r.key)
+    }
+  }
+
   if (results.length === 0) {
     return {
       type: 'text',
@@ -64,16 +99,24 @@ export const call: LocalCommandCall = async (args) => {
   }
 
   if (results.length === 1) {
-    return formatEntry(results[0]!)
+    return formatEntry(results[0]!, 'search')
   }
 
   // Multiple results
   const hasSemantic = semanticResults.length > 0
-  const lines = [`Found ${results.length} memories matching "${trimmed}"${hasSemantic ? ' (semantic)' : ''}:`, '']
+  const hasGBrain = gbrainResults.length > 0
+  const sources: string[] = ['keyword']
+  if (hasSemantic) sources.push('semantic')
+  if (hasGBrain) sources.push('GBrain')
+
+  const lines = [`Found ${results.length} memories matching "${trimmed}" (${sources.join(' + ')}):`, '']
   for (const entry of results) {
     const tags = entry.tags?.length ? ` [${entry.tags.join(', ')}]` : ''
     const semScore = semanticResults.find(s => s.key === entry.key)
-    const scoreStr = semScore ? ` (${(semScore.score * 100).toFixed(0)}%)` : ''
+    const gScore = gbrainResults.find(g => `gbrain:${g.source}` === entry.key)
+    let scoreStr = ''
+    if (semScore) scoreStr = ` (semantic: ${(semScore.score * 100).toFixed(0)}%)`
+    if (gScore) scoreStr = ` (gbrain: ${(gScore.score * 100).toFixed(0)}%)`
     lines.push(`  🔑 ${entry.key}${tags}${scoreStr}`)
     lines.push(`     ${entry.value.length > 60 ? entry.value.slice(0, 57) + '...' : entry.value}`)
     lines.push('')
@@ -85,12 +128,22 @@ export const call: LocalCommandCall = async (args) => {
   }
 }
 
-function formatEntry(entry: MemoryEntry): { type: 'text'; value: string } {
+function formatEntry(entry: MemoryEntry, source: string): { type: 'text'; value: string } {
   const tags = entry.tags?.length ? `\n   Tags: ${entry.tags.join(', ')}` : ''
   const updated = entry.updatedAt ? `\n   Updated: ${new Date(entry.updatedAt).toLocaleString()}` : ''
+  const sourceStr = source !== 'exact' ? ` (via ${source})` : ''
 
   return {
     type: 'text',
-    value: `🔑 ${entry.key}\n   ${entry.value}${tags}${updated}`,
+    value: `🔑 ${entry.key}${sourceStr}\n   ${entry.value}${tags}${updated}`,
+  }
+}
+
+function recordAccessSafe(key: string): void {
+  try {
+    const { recordAccess } = require('../../services/memory/decay.js')
+    recordAccess(key)
+  } catch {
+    // Decay tracking not critical
   }
 }

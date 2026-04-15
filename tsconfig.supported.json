@@ -35,7 +35,11 @@
     "src/services/voice/voiceService.ts",
     "src/utils/providerProfile.ts",
     "src/utils/providerRecommendation.ts",
-    "src/commands/vault/vault.ts"
+    "src/commands/vault/vault.ts",
+    "src/services/memory/decay.ts",
+    "src/services/memory/autoRemember.ts",
+    "src/services/memory/autoIndex.ts",
+    "src/services/memory/consolidation.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
