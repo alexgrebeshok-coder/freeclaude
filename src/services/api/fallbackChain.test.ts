@@ -3,20 +3,22 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { FallbackChain, shouldFallback, isNetworkError, resolveApiKey, CONFIG_PATH } from './fallbackChain.ts'
-import { writeFileSync, unlinkSync, existsSync } from 'node:fs'
+import { FallbackChain, shouldFallback, isNetworkError, resolveApiKey } from './fallbackChain.ts'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-// Backup/restore config file around tests
-let configBackup: string | null = null
+const ORIGINAL_FREECLAUDE_CONFIG_PATH = process.env.FREECLAUDE_CONFIG_PATH
+let testConfigDir = ''
+let testConfigPath = ''
 
 beforeEach(() => {
-  if (existsSync(CONFIG_PATH)) {
-    configBackup = CONFIG_PATH
-  }
+  testConfigDir = mkdtempSync(join(tmpdir(), 'freeclaude-fallback-'))
+  testConfigPath = join(testConfigDir, 'config.json')
+  process.env.FREECLAUDE_CONFIG_PATH = testConfigPath
+
   // Ensure a test config exists so FallbackChain always has providers
-  writeFileSync(CONFIG_PATH, JSON.stringify({
+  writeFileSync(testConfigPath, JSON.stringify({
     providers: [
       { name: 'test-openrouter', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'test-key', model: 'gpt-4o', priority: 1 },
       { name: 'test-zai', baseUrl: 'https://openai.api2d.net/v1', apiKey: 'test-key', model: 'glm-5-turbo', priority: 2 },
@@ -26,12 +28,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  try { unlinkSync(CONFIG_PATH) } catch {}
-  // Restore original config if it existed
-  if (configBackup && existsSync(configBackup)) {
-    // configBackup IS CONFIG_PATH — just leave it deleted, original was overwritten
+  rmSync(testConfigDir, { force: true, recursive: true })
+  if (ORIGINAL_FREECLAUDE_CONFIG_PATH === undefined) {
+    delete process.env.FREECLAUDE_CONFIG_PATH
+  } else {
+    process.env.FREECLAUDE_CONFIG_PATH = ORIGINAL_FREECLAUDE_CONFIG_PATH
   }
-  configBackup = null
 })
 
 // ---------------------------------------------------------------------------

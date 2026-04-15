@@ -8,10 +8,10 @@
 
 import * as readline from 'node:readline'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
-
-const CONFIG_PATH = join(homedir(), '.freeclaude.json')
+import {
+  getFreeClaudeConfigPath,
+  resolveConfiguredProviderModel,
+} from '../utils/freeclaudeConfig.ts'
 
 // Provider presets
 const PRESETS: Record<string, {
@@ -90,9 +90,10 @@ function question(prompt: string): Promise<string> {
 // ---- Config I/O ----
 
 function loadConfig(): FreeClaudeConfig {
-  if (existsSync(CONFIG_PATH)) {
+  const configPath = getFreeClaudeConfigPath()
+  if (existsSync(configPath)) {
     try {
-      return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'))
+      return JSON.parse(readFileSync(configPath, 'utf-8'))
     } catch {
       // Corrupted config, start fresh
     }
@@ -104,7 +105,7 @@ function loadConfig(): FreeClaudeConfig {
 }
 
 function saveConfig(config: FreeClaudeConfig): void {
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+  writeFileSync(getFreeClaudeConfigPath(), JSON.stringify(config, null, 2) + '\n', 'utf-8')
 }
 
 // ---- Provider test ----
@@ -199,7 +200,12 @@ async function main() {
   const apiKey = apiKeyInput || 'ollama'
 
   // Model
-  const model = await question(`Model [${preset.model}]: `) || preset.model
+  const modelInput = await question(`Model [${preset.model}]: `)
+  const model =
+    resolveConfiguredProviderModel(
+      { name, baseUrl },
+      modelInput || preset.model,
+    ) ?? preset.model
 
   // Priority
   const nextPriority = config.providers.length > 0
@@ -231,7 +237,7 @@ async function main() {
   config.providers.sort((a, b) => a.priority - b.priority)
   saveConfig(config)
 
-  console.log(`\n✅ Saved to ${CONFIG_PATH}`)
+  console.log(`\n✅ Saved to ${getFreeClaudeConfigPath()}`)
   console.log(`\nProviders configured: ${config.providers.length}`)
   for (const p of config.providers) {
     console.log(`  ${p.priority}. ${p.name} (${p.model})`)

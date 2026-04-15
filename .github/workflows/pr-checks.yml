@@ -33,6 +33,9 @@ jobs:
       - name: Provider tests
         run: bun run test:provider
 
+      - name: Model switcher tests
+        run: bun test src/utils/freeclaudeConfig.test.ts src/commands/model/model.test.ts
+
       - name: Background jobs tests
         run: bun test src/commands/jobs/jobs.test.ts
 

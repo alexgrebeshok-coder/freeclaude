@@ -17,10 +17,10 @@
 
 import type { LocalCommandCall } from '../../types/command.js'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
-
-const CONFIG_PATH = join(homedir(), '.freeclaude.json')
+import {
+  getFreeClaudeConfigPath,
+  resolveConfiguredProviderModel,
+} from '../../utils/freeclaudeConfig.ts'
 
 interface Provider {
   name: string
@@ -68,13 +68,14 @@ const PROVIDERS = [
 ]
 
 function loadConfig(): Config {
-  if (!existsSync(CONFIG_PATH)) return { providers: [] }
-  try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Config }
+  const configPath = getFreeClaudeConfigPath()
+  if (!existsSync(configPath)) return { providers: [] }
+  try { return JSON.parse(readFileSync(configPath, 'utf-8')) as Config }
   catch { return { providers: [] } }
 }
 
 function saveConfig(config: Config): void {
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n')
+  writeFileSync(getFreeClaudeConfigPath(), JSON.stringify(config, null, 2) + '\n')
 }
 
 function maskKey(key: string): string {
@@ -288,7 +289,13 @@ function addProvider(idx: number, apiKeyArg: string, modelArg: string): { type: 
   }
 
   let apiKey = ''
-  let model = modelArg || def.models[0] || ''
+  let model =
+    resolveConfiguredProviderModel(
+      { name: def.slug, baseUrl: def.baseUrl },
+      modelArg || def.models[0] || '',
+    ) ??
+    def.models[0] ??
+    ''
 
   if (def.defaultKey) {
     apiKey = def.defaultKey

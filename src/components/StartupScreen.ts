@@ -68,9 +68,11 @@ const LOGO_FREE = [
 
 // ─── Provider detection (reads from ~/.freeclaude.json) ──────────────────────
 
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import {
+  getFreeClaudeConfigPath,
+  getOrderedConfiguredProviders,
+  readFreeClaudeConfig,
+} from '../utils/freeclaudeConfig.ts'
 
 interface ConfigProvider {
   name: string
@@ -82,36 +84,21 @@ interface ConfigProvider {
 }
 
 function detectProvider(): { name: string; model: string; baseUrl: string; isLocal: boolean; label: string } {
-  const configPath = join(homedir(), '.freeclaude.json')
+  const configPath = getFreeClaudeConfigPath()
 
-  if (existsSync(configPath)) {
+  const config = readFreeClaudeConfig()
+  if (config) {
     try {
-      const raw = readFileSync(configPath, 'utf-8')
-      const config = JSON.parse(raw)
-
-      // Use activeProvider if set, otherwise fall back to priority sort
-      let targetProvider: ConfigProvider | undefined
-
-      if (config.activeProvider) {
-        targetProvider = config.providers?.find(
-          (p: ConfigProvider) => p.name === config.activeProvider
-        )
-        // Override model if activeModel is set
-        if (targetProvider && config.activeModel) {
-          targetProvider = { ...targetProvider, model: config.activeModel }
-        }
-      }
-
-      if (!targetProvider && Array.isArray(config.providers) && config.providers.length > 0) {
-        const sorted = [...config.providers].sort((a: ConfigProvider, b: ConfigProvider) => a.priority - b.priority)
-        targetProvider = sorted.find((p: ConfigProvider) => {
+      const orderedProviders = getOrderedConfiguredProviders(config)
+      const targetProvider =
+        orderedProviders.find((p: ConfigProvider) => {
           let apiKey = p.apiKey
           if (typeof apiKey === 'string' && apiKey.startsWith('env:')) {
             apiKey = process.env[apiKey.slice(4)] || ''
           }
           return !!apiKey
         })
-      }
+        ?? orderedProviders[0]
 
       if (targetProvider) {
         const isLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(targetProvider.baseUrl)

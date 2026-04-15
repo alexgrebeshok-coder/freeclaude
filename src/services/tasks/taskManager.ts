@@ -22,6 +22,7 @@ import type { Readable } from 'node:stream'
 import { createInterface } from 'node:readline'
 import { getStats, type UsageStats } from '../usage/usageStore.js'
 import { getVoiceStatus } from '../voice/voiceService.js'
+import { getOrderedConfiguredProviders, readFreeClaudeConfig } from '../../utils/freeclaudeConfig.ts'
 
 export type TaskStatus =
   | 'queued'
@@ -686,30 +687,19 @@ function detectProviderFromDiagnostics(line: string): string | undefined {
 }
 
 function loadConfiguredProviders(): RuntimeProvider[] {
-  const path = configPath()
-  if (!existsSync(path)) return []
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8')) as {
-      providers?: Array<{
-        name?: string
-        model?: string
-        baseUrl?: string
-        priority?: number
-      }>
-    }
-    return (raw.providers ?? [])
-      .map(provider => ({
-        name: provider.name ?? 'unknown',
-        ...(provider.model ? { model: provider.model } : {}),
-        ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
-        ...(typeof provider.priority === 'number'
-          ? { priority: provider.priority }
-          : {}),
-      }))
-      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
-  } catch {
+  const config = readFreeClaudeConfig()
+  if (!config) {
     return []
   }
+  return getOrderedConfiguredProviders(config)
+    .map(provider => ({
+      name: provider.name ?? 'unknown',
+      ...(provider.model ? { model: provider.model } : {}),
+      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
+      ...(typeof provider.priority === 'number'
+        ? { priority: provider.priority }
+        : {}),
+    }))
 }
 
 export function getTaskTemplates(): TaskTemplate[] {

@@ -2,25 +2,38 @@
 
 import { existsSync, readFileSync } from 'fs'
 import { dirname, join } from 'path'
-import { homedir } from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
+import {
+  getFreeClaudeConfigPath,
+  getOrderedConfiguredProviders,
+  normalizeFreeClaudeConfig,
+  readFreeClaudeConfig,
+  writeFreeClaudeConfig,
+} from '../utils/freeclaudeConfig.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distPath = join(__dirname, '..', 'dist', 'cli.mjs')
 
 // ─── Load provider config ─────────────────────────────────────────────────
 
-const configPath = join(homedir(), '.freeclaude.json')
+const configPath = getFreeClaudeConfigPath()
 let hasProvider = false
 
 if (existsSync(configPath)) {
   try {
-    const raw = readFileSync(configPath, 'utf-8')
-    const config = JSON.parse(raw)
-    if (Array.isArray(config.providers) && config.providers.length > 0) {
-      // Find highest priority provider with a valid API key
-      const sorted = [...config.providers].sort((a: any, b: any) => a.priority - b.priority)
-      for (const p of sorted) {
+    const rawConfig = readFreeClaudeConfig()
+    const config = rawConfig ? normalizeFreeClaudeConfig(rawConfig) : null
+
+    if (config?.changed) {
+      writeFreeClaudeConfig(config.config)
+    }
+
+    const orderedProviders = config
+      ? getOrderedConfiguredProviders(config.config)
+      : []
+
+    if (orderedProviders.length > 0) {
+      for (const p of orderedProviders) {
         let apiKey = p.apiKey
         if (typeof apiKey === 'string' && apiKey.startsWith('env:')) {
           apiKey = process.env[apiKey.slice(4)] || ''

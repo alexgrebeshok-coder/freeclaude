@@ -1,22 +1,13 @@
 import type { LocalCommandCall } from '../../types/command.js'
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
-
-type Provider = {
-  name: string
-  baseUrl: string
-  apiKey: string
-  model: string
-  priority?: number
-  timeout?: number
-}
-
-type FreeClaudeConfig = {
-  providers?: Provider[]
-}
-
-const CONFIG_PATH = join(homedir(), '.freeclaude.json')
+import { existsSync } from 'node:fs'
+import {
+  getFreeClaudeConfigPath,
+  getOrderedConfiguredProviders,
+  normalizeFreeClaudeConfig,
+  readFreeClaudeConfig,
+  type FreeClaudeConfig,
+  type FreeClaudeProviderConfig as Provider,
+} from '../../utils/freeclaudeConfig.ts'
 
 function maskKey(key: string): string {
   if (!key || key.length < 8) return '••••'
@@ -64,7 +55,8 @@ export const call: LocalCommandCall = async (args) => {
 }
 
 async function showProviders(test: boolean): Promise<{ type: 'text'; value: string }> {
-  if (!existsSync(CONFIG_PATH)) {
+  const configPath = getFreeClaudeConfigPath()
+  if (!existsSync(configPath)) {
     return {
       type: 'text',
       value: [
@@ -88,17 +80,15 @@ async function showProviders(test: boolean): Promise<{ type: 'text'; value: stri
     }
   }
 
-  let config: FreeClaudeConfig
-  try {
-    const raw = readFileSync(CONFIG_PATH, 'utf-8')
-    config = JSON.parse(raw) as FreeClaudeConfig
-  } catch {
+  const rawConfig = readFreeClaudeConfig()
+  if (!rawConfig) {
     return {
       type: 'text',
-      value: `Error: Failed to parse ${CONFIG_PATH}`,
+      value: `Error: Failed to parse ${configPath}`,
     }
   }
 
+  const { config } = normalizeFreeClaudeConfig(rawConfig)
   const providers = config.providers ?? []
   if (providers.length === 0) {
     return {
@@ -108,7 +98,7 @@ async function showProviders(test: boolean): Promise<{ type: 'text'; value: stri
   }
 
   // Sort by priority
-  const sorted = [...providers].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
+  const sorted = getOrderedConfiguredProviders(config)
 
   const lines = [`📡 Providers (${sorted.length})`, '']
   lines.push('| # | Name | Model | URL | Key |' + (test ? ' Status | Latency |' : ''))

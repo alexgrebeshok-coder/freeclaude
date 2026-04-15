@@ -5,9 +5,13 @@
  * Config: ~/.freeclaude.json (optional — falls back to env vars)
  */
 
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import {
+  getFreeClaudeConfigPath,
+  getOrderedConfiguredProviders,
+  normalizeFreeClaudeConfig,
+  readFreeClaudeConfig,
+  writeFreeClaudeConfig,
+} from '../../utils/freeclaudeConfig.ts'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,7 +50,7 @@ interface ProviderRuntime extends ProviderConfig {
 // Config file path
 // ---------------------------------------------------------------------------
 
-export const CONFIG_PATH = join(homedir(), '.freeclaude.json')
+export const CONFIG_PATH = getFreeClaudeConfigPath()
 
 // ---------------------------------------------------------------------------
 // Errors that trigger fallback
@@ -65,6 +69,17 @@ const NETWORK_ERROR_PATTERNS = [
   'network error',
   'abort error',
 ]
+
+function toFallbackLogLevel(
+  value: unknown,
+): FallbackDefaults['logLevel'] | undefined {
+  return value === 'debug' ||
+    value === 'info' ||
+    value === 'warn' ||
+    value === 'error'
+    ? value
+    : undefined
+}
 
 export function shouldFallback(statusCode: number): boolean {
   return FALLBACK_STATUS_CODES.has(statusCode)
@@ -133,41 +148,50 @@ export class FallbackChain {
   // ---- Loading ----
 
   loadProviders(): void {
-    if (existsSync(CONFIG_PATH)) {
+    const configPath = getFreeClaudeConfigPath()
+    const rawConfig = readFreeClaudeConfig()
+    if (rawConfig) {
       try {
-        const raw = readFileSync(CONFIG_PATH, 'utf-8')
-        const config = JSON.parse(raw)
+        const normalized = normalizeFreeClaudeConfig(rawConfig)
+        const config = normalized.config
+
+        if (normalized.changed) {
+          writeFreeClaudeConfig(config)
+        }
 
         if (Array.isArray(config.providers)) {
-          this.providers = config.providers
-            .map((p: ProviderConfig) => ({
-              ...p,
+          this.providers = getOrderedConfiguredProviders(config)
+            .map(p => ({
+              name: p.name,
+              baseUrl: p.baseUrl,
               apiKey: resolveApiKey(p.apiKey),
+              model: p.model,
+              priority: p.priority ?? 999,
+              timeout: p.timeout ?? 30000,
               errorStreak: 0,
               markedDownAt: null,
             }))
-            .sort((a: ProviderRuntime, b: ProviderRuntime) => a.priority - b.priority)
-
-          // FreeClaude: put activeProvider first so getCurrent() returns it
-          if (config.activeProvider) {
-            const activeIdx = this.providers.findIndex(
-              (p: ProviderRuntime) => p.name === config.activeProvider,
-            )
-            if (activeIdx > 0) {
-              const [active] = this.providers.splice(activeIdx, 1)
-              this.providers.unshift(active)
-            }
-          }
 
           this.enabled = true
-          this.log('info', `Loaded ${this.providers.length} providers from ${CONFIG_PATH}`)
+          this.log('info', `Loaded ${this.providers.length} providers from ${configPath}`)
         }
 
         if (config.defaults) {
-          this.defaults = { ...this.defaults, ...config.defaults }
+          this.defaults = {
+            ...this.defaults,
+            ...(typeof config.defaults.maxRetries === 'number'
+              ? { maxRetries: config.defaults.maxRetries }
+              : {}),
+            ...(typeof config.defaults.retryDelay === 'number'
+              ? { retryDelay: config.defaults.retryDelay }
+              : {}),
+            ...(toFallbackLogLevel(config.defaults.logLevel)
+              ? { logLevel: toFallbackLogLevel(config.defaults.logLevel) }
+              : {}),
+          }
         }
       } catch (e) {
-        console.error(`[FreeClaude] ERROR: Failed to parse ${CONFIG_PATH}:`, e)
+        console.error(`[FreeClaude] ERROR: Failed to parse ${configPath}:`, e)
       }
     }
 

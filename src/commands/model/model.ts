@@ -11,26 +11,14 @@
  */
 
 import type { LocalCommandCall } from '../../types/command.js'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
-
-const CONFIG_PATH = join(homedir(), '.freeclaude.json')
-
-interface Provider {
-  name: string
-  baseUrl: string
-  apiKey: string
-  model: string
-  priority?: number
-  timeout?: number
-}
-
-interface Config {
-  providers?: Provider[]
-  activeProvider?: string
-  activeModel?: string
-}
+import {
+  normalizeFreeClaudeConfig,
+  readFreeClaudeConfig,
+  resolveConfiguredProviderModel,
+  type FreeClaudeConfig as Config,
+  type FreeClaudeProviderConfig as Provider,
+  writeFreeClaudeConfig,
+} from '../../utils/freeclaudeConfig.ts'
 
 function maskKey(key: string): string {
   if (!key || key.length < 8) return '••••'
@@ -39,16 +27,16 @@ function maskKey(key: string): string {
 }
 
 function loadConfig(): Config {
-  if (!existsSync(CONFIG_PATH)) return { providers: [] }
-  try {
-    return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Config
-  } catch {
-    return { providers: [] }
+  const config = readFreeClaudeConfig() ?? { providers: [] }
+  const normalized = normalizeFreeClaudeConfig(config)
+  if (normalized.changed) {
+    writeFreeClaudeConfig(normalized.config)
   }
+  return normalized.config
 }
 
 function saveConfig(config: Config): void {
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n')
+  writeFreeClaudeConfig(config)
 }
 
 export const call: LocalCommandCall = async (args) => {
@@ -97,12 +85,34 @@ export const call: LocalCommandCall = async (args) => {
       break
     }
   }
+  if (activeIdx < 0 && config.activeProvider) {
+    activeIdx = providers.findIndex(provider => provider.name === config.activeProvider)
+  }
 
   // Switch provider or model
   if (trimmed !== '') {
     const num = parseInt(trimmed)
     if (!isNaN(num) && num >= 1 && num <= providers.length) {
       return switchProvider(config, providers, num - 1)
+    }
+
+    const slashIdx = trimmed.indexOf('/')
+    if (slashIdx > 0) {
+      const providerPart = trimmed.slice(0, slashIdx).trim().toLowerCase()
+      const modelPart = trimmed.slice(slashIdx + 1).trim()
+      if (providerPart && modelPart) {
+        let provMatch = providers.findIndex(
+          provider => provider.name.toLowerCase() === providerPart,
+        )
+        if (provMatch < 0) {
+          provMatch = providers.findIndex(provider =>
+            provider.name.toLowerCase().includes(providerPart),
+          )
+        }
+        if (provMatch >= 0) {
+          return switchModel(config, providers, provMatch, modelPart)
+        }
+      }
     }
 
     // /model provider model-id — switch model within a provider
@@ -138,7 +148,7 @@ export const call: LocalCommandCall = async (args) => {
 
     return {
       type: 'text' as const,
-      value: `❌ Provider "${trimmed}" not found.\n\nRun /model to see available providers.\n\nTip: Use /model provider/model to change model within a provider.\nExample: /model openrouter/anthropic/claude-sonnet-4`,
+      value: `❌ Provider "${trimmed}" not found.\n\nRun /model to see available providers.\n\nTip: Use /model provider/model or /model provider model-id to change model within a provider.\nExample: /model openrouter/anthropic/claude-sonnet-4`,
     }
   }
 
@@ -218,9 +228,11 @@ function switchProvider(config: Config, providers: Provider[], idx: number): { t
 function switchModel(config: Config, providers: Provider[], idx: number, newModel: string): { type: 'text'; value: string } {
   const target = providers[idx]!
   const oldModel = target.model
+  const resolvedModel =
+    resolveConfiguredProviderModel(target, newModel) ?? newModel.trim()
 
   // Update the model in the provider config
-  target.model = newModel
+  target.model = resolvedModel
   config.providers = providers
 
   // Update env vars immediately
@@ -232,11 +244,11 @@ function switchModel(config: Config, providers: Provider[], idx: number, newMode
     process.env.OPENAI_API_KEY = apiKey
   }
   process.env.OPENAI_BASE_URL = target.baseUrl
-  process.env.OPENAI_MODEL = newModel
+  process.env.OPENAI_MODEL = resolvedModel
 
   // Persist
   config.activeProvider = target.name
-  config.activeModel = newModel
+  config.activeModel = resolvedModel
   saveConfig(config)
 
   const url = target.baseUrl.replace(/https?:\/\//, '').replace(/\/api.*$/, '')
@@ -245,7 +257,7 @@ function switchModel(config: Config, providers: Provider[], idx: number, newMode
     type: 'text' as const,
     value: [
       `✅ Switched model within: ${target.name}`,
-      `   ${oldModel} → ${newModel}`,
+      `   ${oldModel} → ${resolvedModel}`,
       `   Endpoint: ${url}`,
       '',
       '  💾 Saved as default. Will be used on next start.',
