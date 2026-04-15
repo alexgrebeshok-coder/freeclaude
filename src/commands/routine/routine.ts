@@ -7,6 +7,7 @@ import {
   createRoutine,
   deleteRoutine,
   getRoutine,
+  getRoutineRun,
   listRoutineRuns,
   setRoutineEnabled,
   listRoutines,
@@ -20,11 +21,17 @@ import {
   stopRoutineApiServer,
 } from '../../services/routine/apiServer.js'
 import { startRoutineRun } from '../../services/routine/runner.js'
+import type { TaskRecord, TaskStatus } from '../../services/tasks/taskManager.js'
+import type { RoutineRunRecord } from '../../services/routine/store.js'
 
 type TextResult = { type: 'text'; value: string }
 
 function toText(value: string): TextResult {
   return { type: 'text', value }
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function tokenize(args: string): string[] {
@@ -83,6 +90,190 @@ function parseEnvFlags(values: string[]): Record<string, string> {
   return env
 }
 
+function parsePositiveInteger(
+  value: string | undefined,
+  label: string,
+  fallback: number,
+): number {
+  if (value === undefined) {
+    return fallback
+  }
+
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive integer`)
+  }
+
+  return parsed
+}
+
+type RoutineRunDisplayStatus = RoutineRunRecord['status'] | TaskStatus
+
+const ROUTINE_LOG_STATUS_FILTERS = new Set<RoutineRunDisplayStatus>([
+  'queued',
+  'running',
+  'started',
+  'completed',
+  'failed',
+  'cancelled',
+])
+
+interface RoutineRunSnapshot {
+  run: RoutineRunRecord
+  task: TaskRecord | null
+  status: RoutineRunDisplayStatus
+}
+
+function normalizeRoutineRunStatus(
+  value: string | undefined,
+): RoutineRunDisplayStatus | undefined {
+  if (!value) {
+    return undefined
+  }
+  const normalized = value.trim().toLowerCase() as RoutineRunDisplayStatus
+  if (!ROUTINE_LOG_STATUS_FILTERS.has(normalized)) {
+    throw new Error(
+      'Status must be one of: queued, running, started, completed, failed, cancelled',
+    )
+  }
+  return normalized
+}
+
+function buildRoutineRunSnapshot(run: RoutineRunRecord): RoutineRunSnapshot {
+  const task = run.taskId ? getTask(run.taskId) : null
+  return {
+    run,
+    task,
+    status: task?.status ?? run.status,
+  }
+}
+
+function statusIcon(status: RoutineRunDisplayStatus): string {
+  switch (status) {
+    case 'completed':
+      return '✅'
+    case 'failed':
+      return '❌'
+    case 'cancelled':
+      return '⛔'
+    case 'queued':
+      return '🕓'
+    case 'running':
+    case 'started':
+      return '🚧'
+    default:
+      return '•'
+  }
+}
+
+function compactText(value: string | undefined, maxLength = 100): string | undefined {
+  if (!value?.trim()) {
+    return undefined
+  }
+
+  const compact = value.replace(/\s+/g, ' ').trim()
+  return compact.length > maxLength
+    ? `${compact.slice(0, Math.max(0, maxLength - 3))}...`
+    : compact
+}
+
+function formatProviderModel(snapshot: RoutineRunSnapshot): string | null {
+  const provider = snapshot.task?.provider ?? snapshot.run.provider ?? null
+  const model = snapshot.task?.model ?? snapshot.run.model ?? null
+
+  if (!provider && !model) {
+    return null
+  }
+
+  return [provider ?? '(default)', model ?? '(default)'].join(' / ')
+}
+
+function formatRoutineRunList(
+  snapshots: RoutineRunSnapshot[],
+  options: {
+    routineIdOrName?: string
+    limit: number
+    status?: RoutineRunDisplayStatus
+  },
+): string {
+  const headerBits = [`${snapshots.length} shown`]
+  if (options.routineIdOrName) {
+    headerBits.push(`routine: ${options.routineIdOrName}`)
+  }
+  if (options.status) {
+    headerBits.push(`status: ${options.status}`)
+  }
+  headerBits.push(`last ${options.limit}`)
+
+  const lines = [`📜 Routine runs (${headerBits.join(', ')})`, '']
+
+  for (const snapshot of snapshots) {
+    const providerModel = formatProviderModel(snapshot)
+    lines.push(
+      `  ${statusIcon(snapshot.status)} ${snapshot.run.id}  ${snapshot.run.routineName}  ${snapshot.run.trigger}  ${snapshot.status}  ${snapshot.run.createdAt}`,
+    )
+    const detailBits = [
+      snapshot.run.taskShortId ? `task: ${snapshot.run.taskShortId}` : null,
+      providerModel ? `model: ${providerModel}` : null,
+    ].filter(Boolean)
+    if (detailBits.length > 0) {
+      lines.push(`     ${detailBits.join('  ')}`)
+    }
+
+    const summary =
+      compactText(snapshot.task?.summary ?? snapshot.task?.resultPreview) ??
+      compactText(snapshot.run.note)
+    if (summary) {
+      lines.push(`     ${summary}`)
+    }
+
+    const error = compactText(snapshot.task?.errorMessage)
+    if (error) {
+      lines.push(`     error: ${error}`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+function formatRoutineRunDetail(snapshot: RoutineRunSnapshot): string {
+  const providerModel = formatProviderModel(snapshot)
+  const lines = [
+    `📘 Routine run ${snapshot.run.id}`,
+    `   Routine: ${snapshot.run.routineName} (${snapshot.run.routineId})`,
+    `   Trigger: ${snapshot.run.trigger}`,
+    `   Status: ${snapshot.status}`,
+    `   Recorded status: ${snapshot.run.status}`,
+    `   Created: ${snapshot.run.createdAt}`,
+    ...(snapshot.run.taskShortId ? [`   Task: ${snapshot.run.taskShortId}`] : []),
+    ...(snapshot.run.taskId ? [`   Task ID: ${snapshot.run.taskId}`] : []),
+    ...(providerModel ? [`   Model: ${providerModel}`] : []),
+    ...(snapshot.task?.updatedAt ? [`   Updated: ${snapshot.task.updatedAt}`] : []),
+    ...(snapshot.task?.completedAt ? [`   Completed: ${snapshot.task.completedAt}`] : []),
+    ...(typeof snapshot.task?.totalCostUsd === 'number'
+      ? [`   Cost: $${snapshot.task.totalCostUsd.toFixed(4)}`]
+      : []),
+    ...(snapshot.task?.artifactPath ? [`   Artifact: ${snapshot.task.artifactPath}`] : []),
+    ...(snapshot.task?.diffPath ? [`   Diff: ${snapshot.task.diffPath}`] : []),
+    ...(snapshot.task?.vaultNotePath ? [`   Vault note: ${snapshot.task.vaultNotePath}`] : []),
+  ]
+
+  if (snapshot.run.note) {
+    lines.push('', 'Note:', snapshot.run.note)
+  }
+  if (snapshot.task?.summary) {
+    lines.push('', 'Summary:', snapshot.task.summary)
+  }
+  if (snapshot.task?.resultPreview && snapshot.task.resultPreview !== snapshot.task.summary) {
+    lines.push('', 'Preview:', snapshot.task.resultPreview)
+  }
+  if (snapshot.task?.errorMessage) {
+    lines.push('', 'Error:', snapshot.task.errorMessage)
+  }
+
+  return lines.join('\n')
+}
+
 function formatRoutineSummary(): string {
   return [
     'Usage: /routine <subcommand> [args]',
@@ -98,9 +289,10 @@ function formatRoutineSummary(): string {
      '  update <id|name> [flags...]       — Update an existing routine',
      '  run <id|name> [--context "<text>"] — Run routine manually now',
      '  delete <id|name>                  — Delete a routine',
-     '  logs [id|name]                    — Show recent routine runs',
-     '  enable <id|name>                  — Enable triggers',
-     '  disable <id|name>                 — Disable triggers',
+      '  logs [id|name] [--last 20]        — Show recent routine runs',
+      '     [--failed] [--status running] [--run <run-id>]',
+      '  enable <id|name>                  — Enable triggers',
+      '  disable <id|name>                 — Disable triggers',
      `  api start [--host ${ROUTINE_API_DEFAULT_HOST}] [--port ${ROUTINE_API_DEFAULT_PORT}]`,
      '                                   — Start local routine API server',
      '  api stop                          — Stop the local routine API server',
@@ -250,22 +442,26 @@ function handleRun(tokens: string[]): TextResult {
   const idOrName = positional[0]
   if (!idOrName) return toText('Usage: /routine run <id|name> [--context "<text>"]')
 
-  const started = startRoutineRun({
-    routineIdOrName: idOrName,
-    trigger: 'manual',
-    extraContext: flag(flags, 'context'),
-  })
+  try {
+    const started = startRoutineRun({
+      routineIdOrName: idOrName,
+      trigger: 'manual',
+      extraContext: flag(flags, 'context'),
+    })
 
-  return toText(
-    [
-      `🚀 Routine started: ${started.routine.name}`,
-      `   Routine ID: ${started.routine.id}`,
-      `   Run ID: ${started.run.id}`,
-      `   Task ID: ${started.taskShortId}`,
-      '',
-      `   Use /task ${started.taskShortId} or /vault to inspect outputs when it finishes.`,
-    ].join('\n'),
-  )
+    return toText(
+      [
+        `🚀 Routine started: ${started.routine.name}`,
+        `   Routine ID: ${started.routine.id}`,
+        `   Run ID: ${started.run.id}`,
+        `   Task ID: ${started.taskShortId}`,
+        '',
+        `   Use /task ${started.taskShortId} or /vault to inspect outputs when it finishes.`,
+      ].join('\n'),
+    )
+  } catch (error) {
+    return toText(`Routine run failed: ${toErrorMessage(error)}`)
+  }
 }
 
 function handleDelete(idOrName: string): TextResult {
@@ -274,20 +470,45 @@ function handleDelete(idOrName: string): TextResult {
   return toText(`🗑️ Deleted routine: ${removed.id} (${removed.name})`)
 }
 
-function handleLogs(idOrName?: string): TextResult {
-  const runs = listRoutineRuns(idOrName, 20)
-  if (runs.length === 0) {
-    return toText('No routine runs yet.')
+function handleLogs(tokens: string[]): TextResult {
+  const { positional, flags } = parseTokens(tokens)
+  const idOrName = positional.join(' ') || undefined
+  const runId = flag(flags, 'run')
+  const status = boolFlag(flags, 'failed')
+    ? 'failed'
+    : normalizeRoutineRunStatus(flag(flags, 'status'))
+  const limit = parsePositiveInteger(flag(flags, 'last'), '--last', 20)
+
+  if (runId) {
+    const run = getRoutineRun(runId)
+    if (idOrName && run.routineId !== getRoutine(idOrName).id) {
+      throw new Error(`Routine run "${runId}" does not belong to "${idOrName}"`)
+    }
+    return toText(formatRoutineRunDetail(buildRoutineRunSnapshot(run)))
   }
 
-  const lines = [`📜 Routine runs (${runs.length})`, '']
-  for (const run of runs) {
-    const taskStatus = run.taskId ? getTask(run.taskId)?.status : undefined
-    lines.push(
-      `  ${run.id}  ${run.routineName}  ${run.trigger}  ${taskStatus ?? run.status}  ${run.createdAt}`,
-    )
+  const snapshots = listRoutineRuns(idOrName)
+    .map(buildRoutineRunSnapshot)
+    .filter(snapshot => (status ? snapshot.status === status : true))
+    .slice(0, limit)
+
+  if (snapshots.length === 0) {
+    const qualifier = [
+      status ? `${status} ` : '',
+      idOrName ? `for "${idOrName}" ` : '',
+    ]
+      .join('')
+      .trim()
+    return toText(qualifier ? `No ${qualifier} routine runs found.` : 'No routine runs yet.')
   }
-  return toText(lines.join('\n'))
+
+  return toText(
+    formatRoutineRunList(snapshots, {
+      routineIdOrName: idOrName,
+      limit,
+      status,
+    }),
+  )
 }
 
 function handleToggle(idOrName: string, enabled: boolean): TextResult {
@@ -366,7 +587,7 @@ export async function call(args: string): Promise<TextResult> {
     case 'remove':
       return handleDelete(rest.join(' '))
     case 'logs':
-      return handleLogs(rest.join(' ') || undefined)
+      return handleLogs(rest)
     case 'enable':
       return handleToggle(rest.join(' '), true)
     case 'disable':

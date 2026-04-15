@@ -28,6 +28,9 @@ const extensionPackage = readJson(
   join(repoRoot, 'extension', 'package.json'),
 ) as { version: string }
 const readme = readText(join(repoRoot, 'README.md'))
+const voicePipelineTest = readText(
+  join(repoRoot, 'src', 'services', 'voice', 'voice-pipeline.test.ts'),
+)
 const expectedVersion = rootPackage.version
 
 const checks: VersionCheck[] = [
@@ -57,6 +60,13 @@ const checks: VersionCheck[] = [
       readme.includes(`[![v${expectedVersion}]`) &&
       readme.includes(`version-${expectedVersion}-`),
     details: `expected badge for ${expectedVersion}`,
+  },
+  {
+    label: 'src/services/voice/voice-pipeline.test.ts',
+    ok:
+      voicePipelineTest.includes(`cli.mjs contains ${expectedVersion}`) &&
+      voicePipelineTest.includes(`toContain('${expectedVersion}')`),
+    details: `expected voice version assertion for ${expectedVersion}`,
   },
 ]
 

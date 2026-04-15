@@ -11,6 +11,7 @@ import {
   startRoutineApiServer,
   stopRoutineApiServer,
 } from './apiServer.ts'
+import { RoutineRunBlockedError } from './runner.ts'
 
 let testHome = ''
 
@@ -105,6 +106,28 @@ describe('routine api server', () => {
       },
     ])
     expect(response.body).toContain('"runId":"run_test"')
+  })
+
+  test('run endpoint returns 409 when routine execution is blocked', async () => {
+    const routine = createRoutine({
+      name: 'Disabled incident bot',
+      prompt: 'Triage incidents.',
+      apiEnabled: true,
+    })
+
+    const response = await handleRoutineApiRequest({
+      method: 'POST',
+      pathname: `/routines/${routine.id}/run`,
+      headers: {
+        authorization: `Bearer ${routine.triggers.api.token}`,
+      },
+      startRun: () => {
+        throw new RoutineRunBlockedError('Routine "Disabled incident bot" is disabled')
+      },
+    })
+
+    expect(response.status).toBe(409)
+    expect(response.body).toContain('is disabled')
   })
 
   test('github endpoint validates signature and repo filter', async () => {

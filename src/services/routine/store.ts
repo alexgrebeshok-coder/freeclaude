@@ -51,6 +51,9 @@ export interface RoutineRunRecord {
   status: 'started' | 'completed' | 'failed'
   createdAt: string
   taskId?: string
+  taskShortId?: string
+  provider?: string | null
+  model?: string | null
   note?: string
 }
 
@@ -422,17 +425,11 @@ export function recordRoutineRun(
   return run
 }
 
-export function listRoutineRuns(
-  idOrName?: string,
-  limit?: number,
-): RoutineRunRecord[] {
+function readRoutineRuns(): RoutineRunRecord[] {
   ensureRoutineDirs()
   const path = getRoutineRunsIndexPath()
   if (!existsSync(path)) return []
-
-  const routineId = idOrName ? getRoutine(idOrName).id : null
-
-  const records = readFileSync(path, 'utf-8')
+  return readFileSync(path, 'utf-8')
     .split('\n')
     .filter(Boolean)
     .map(line => {
@@ -443,8 +440,39 @@ export function listRoutineRuns(
       }
     })
     .filter((record): record is RoutineRunRecord => record !== null)
-    .filter(record => (routineId ? record.routineId === routineId : true))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+export function getRoutineRun(runId: string): RoutineRunRecord {
+  const needle = runId.trim().toLowerCase()
+  if (!needle) {
+    throw new Error('Routine run id is required')
+  }
+
+  const runs = readRoutineRuns()
+  const exact = runs.find(run => run.id === needle)
+  if (exact) {
+    return exact
+  }
+
+  const matches = runs.filter(run => run.id.startsWith(needle))
+  if (matches.length === 1) {
+    return matches[0]!
+  }
+  if (matches.length > 1) {
+    throw new Error(`Routine run "${runId}" is ambiguous`)
+  }
+
+  throw new Error(`Routine run "${runId}" not found`)
+}
+
+export function listRoutineRuns(
+  idOrName?: string,
+  limit?: number,
+): RoutineRunRecord[] {
+  const routineId = idOrName ? getRoutine(idOrName).id : null
+  const records = readRoutineRuns()
+    .filter(record => (routineId ? record.routineId === routineId : true))
 
   return typeof limit === 'number' ? records.slice(0, limit) : records
 }

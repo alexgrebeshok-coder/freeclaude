@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 
 import { getRoutine, listRoutines } from './store.js'
-import { startRoutineRun } from './runner.js'
+import { RoutineRunBlockedError, startRoutineRun } from './runner.js'
 
 export const ROUTINE_API_DEFAULT_HOST = '127.0.0.1'
 export const ROUTINE_API_DEFAULT_PORT = 8787
@@ -200,7 +200,10 @@ export async function handleRoutineApiRequest(
         taskShortId: started.taskShortId,
       })
     } catch (error) {
-      return json(500, { ok: false, error: toErrorMessage(error) })
+      return json(
+        error instanceof RoutineRunBlockedError ? 409 : 500,
+        { ok: false, error: toErrorMessage(error) },
+      )
     }
   }
 
@@ -283,7 +286,10 @@ export async function handleRoutineApiRequest(
         taskShortId: started.taskShortId,
       })
     } catch (error) {
-      return json(500, { ok: false, error: toErrorMessage(error) })
+      return json(
+        error instanceof RoutineRunBlockedError ? 409 : 500,
+        { ok: false, error: toErrorMessage(error) },
+      )
     }
   }
 

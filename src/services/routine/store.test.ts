@@ -10,6 +10,7 @@ import {
   generateRoutineToken,
   generateRoutineWebhookSecret,
   getRoutine,
+  getRoutineRun,
   getRoutineConfigPath,
   listRoutineRuns,
   listRoutines,
@@ -177,6 +178,20 @@ describe('routine store', () => {
 
     expect(listRoutineRuns().length).toBe(2)
     expect(listRoutineRuns(one.id).map(run => run.taskId)).toEqual(['task-1'])
+  })
+
+  test('getRoutineRun resolves a specific run id', () => {
+    const routine = createRoutine({ name: 'Lookup', prompt: 'Lookup.' })
+    const saved = recordRoutineRun({
+      routineId: routine.id,
+      routineName: routine.name,
+      trigger: 'manual',
+      status: 'started',
+      taskId: 'task-lookup',
+    })
+
+    expect(getRoutineRun(saved.id).taskId).toBe('task-lookup')
+    expect(getRoutineRun(saved.id.slice(0, 10)).id).toBe(saved.id)
   })
 
   test('buildRoutinePrompt includes routine metadata and extra context', () => {
