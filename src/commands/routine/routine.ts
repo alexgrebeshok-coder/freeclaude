@@ -1,21 +1,18 @@
 import { parse as parseShellArgs } from 'shell-quote'
 
 import {
-  createTask,
   getTask,
-  spawnTaskWorker,
 } from '../../services/tasks/taskManager.js'
 import {
-  buildRoutinePrompt,
   createRoutine,
   deleteRoutine,
   getRoutine,
   listRoutineRuns,
-  listRoutines,
-  recordRoutineRun,
   setRoutineEnabled,
+  listRoutines,
   updateRoutine,
 } from '../../services/routine/store.js'
+import { startRoutineRun } from '../../services/routine/runner.js'
 
 type TextResult = { type: 'text'; value: string }
 
@@ -228,32 +225,20 @@ function handleRun(tokens: string[]): TextResult {
   const idOrName = positional[0]
   if (!idOrName) return toText('Usage: /routine run <id|name> [--context "<text>"]')
 
-  const routine = getRoutine(idOrName)
-  const prompt = buildRoutinePrompt(routine, flag(flags, 'context'))
-  const task = createTask(prompt, {
-    cwd: process.cwd(),
-    template: 'custom',
-    useWorktree: true,
-  })
-  const spawned = spawnTaskWorker(task.id)
-  const run = recordRoutineRun({
-    routineId: routine.id,
-    routineName: routine.name,
+  const started = startRoutineRun({
+    routineIdOrName: idOrName,
     trigger: 'manual',
-    status: 'started',
-    taskId: spawned.id,
-    note: flag(flags, 'context'),
+    extraContext: flag(flags, 'context'),
   })
-  updateRoutine(routine.id, { lastRun: run.createdAt })
 
   return toText(
     [
-      `🚀 Routine started: ${routine.name}`,
-      `   Routine ID: ${routine.id}`,
-      `   Run ID: ${run.id}`,
-      `   Task ID: ${spawned.shortId}`,
+      `🚀 Routine started: ${started.routine.name}`,
+      `   Routine ID: ${started.routine.id}`,
+      `   Run ID: ${started.run.id}`,
+      `   Task ID: ${started.taskShortId}`,
       '',
-      `   Use /task ${spawned.shortId} or /vault to inspect outputs when it finishes.`,
+      `   Use /task ${started.taskShortId} or /vault to inspect outputs when it finishes.`,
     ].join('\n'),
   )
 }

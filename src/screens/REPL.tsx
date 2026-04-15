@@ -197,6 +197,7 @@ const PROACTIVE_FALSE = () => false;
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
 const useProactive = feature('PROACTIVE') || feature('KAIROS') ? require('../proactive/useProactive.js').useProactive : null;
 const useScheduledTasks = feature('AGENT_TRIGGERS') ? require('../hooks/useScheduledTasks.js').useScheduledTasks : null;
+const useRoutineScheduler = require('../hooks/useRoutineScheduler.js').useRoutineScheduler;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { useTaskListWatcher } from '../hooks/useTaskListWatcher.js';
@@ -4053,6 +4054,9 @@ export function REPL({
       setMessages
     });
   }
+
+  // biome-ignore lint/correctness/useHookAtTopLevel: loaded through the same static require block as other optional runtime hooks
+  useRoutineScheduler();
 
   // Note: Permission polling is now handled by useInboxPoller
   // - Workers receive permission responses via mailbox messages

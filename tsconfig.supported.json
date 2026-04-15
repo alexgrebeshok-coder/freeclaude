@@ -36,6 +36,7 @@
     "src/utils/providerProfile.ts",
     "src/utils/providerRecommendation.ts",
     "src/services/routine/store.ts",
+    "src/services/routine/scheduler.ts",
     "src/services/vault/vaultStore.ts",
     "src/commands/vault/vault.ts",
     "src/services/memory/decay.ts",

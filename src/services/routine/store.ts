@@ -387,12 +387,14 @@ export function buildRoutinePrompt(
 }
 
 export function recordRoutineRun(
-  entry: Omit<RoutineRunRecord, 'id' | 'createdAt'>,
+  entry: Omit<RoutineRunRecord, 'id' | 'createdAt'> & {
+    createdAt?: string
+  },
 ): RoutineRunRecord {
   ensureRoutineDirs()
   const run: RoutineRunRecord = {
     id: `run_${randomUUID().replace(/-/g, '').slice(0, 8)}`,
-    createdAt: nowIso(),
+    createdAt: entry.createdAt ?? nowIso(),
     ...entry,
   }
   appendFileSync(getRoutineRunsIndexPath(), JSON.stringify(run) + '\n', 'utf-8')
