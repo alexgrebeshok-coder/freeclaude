@@ -2,7 +2,7 @@
   "name": "freeclaude",
   "displayName": "FreeClaude",
   "description": "Light companion extension for FreeClaude Desktop and CLI",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "publisher": "alexgrebeshok",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages", "Machine Learning", "Chat"],

@@ -139,10 +139,10 @@ describe('speech-to-text module', () => {
 // ─── Test 6: Bundle version ─────────────────────────────────────────
 
 describe('bundle: version truth', () => {
-  test('cli.mjs contains 3.0.6', () => {
+  test('cli.mjs contains 3.0.7', () => {
     const cliPath = join(import.meta.dir, '../../../dist/cli.mjs')
     if (!existsSync(cliPath)) return
     const cli = readFileSync(cliPath, 'utf8')
-    expect(cli).toContain('3.0.6')
+    expect(cli).toContain('3.0.7')
   })
 })
