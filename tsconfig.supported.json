@@ -46,7 +46,9 @@
     "src/services/context/compactor.ts",
     "src/services/context/budgetTracker.ts",
     "src/services/context/degradation.ts",
-    "src/services/context/providerWindows.ts"
+    "src/services/context/providerWindows.ts",
+    "src/services/tasks/protocol/types.ts",
+    "src/services/tasks/protocol/taskProtocol.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
