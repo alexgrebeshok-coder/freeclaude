@@ -16,6 +16,7 @@ export interface RoutineApiTrigger {
 
 export interface RoutineGitHubTrigger {
   event: string | null
+  secret: string | null
   filters: Record<string, unknown>
 }
 
@@ -66,6 +67,7 @@ export interface CreateRoutineInput {
   apiEnabled?: boolean
   apiToken?: string | null
   githubEvent?: string | null
+  githubSecret?: string | null
   githubFilters?: Record<string, unknown>
   repos?: string[]
   env?: Record<string, string>
@@ -83,6 +85,7 @@ export interface UpdateRoutineInput {
   apiEnabled?: boolean
   apiToken?: string | null
   githubEvent?: string | null
+  githubSecret?: string | null
   githubFilters?: Record<string, unknown>
   repos?: string[]
   env?: Record<string, string>
@@ -129,6 +132,7 @@ function defaultTriggers(): RoutineTriggers {
     },
     github: {
       event: null,
+      secret: null,
       filters: {},
     },
   }
@@ -169,6 +173,10 @@ export function generateRoutineId(): string {
 
 export function generateRoutineToken(): string {
   return `fc_tok_${randomUUID().replace(/-/g, '').slice(0, 24)}`
+}
+
+export function generateRoutineWebhookSecret(): string {
+  return `fc_hook_${randomUUID().replace(/-/g, '').slice(0, 24)}`
 }
 
 export function loadRoutineFile(): RoutinesFile {
@@ -261,6 +269,10 @@ export function createRoutine(input: CreateRoutineInput): RoutineRecord {
       },
       github: {
         event: input.githubEvent?.trim() || null,
+        secret:
+          input.githubEvent?.trim()
+            ? (input.githubSecret?.trim() || generateRoutineWebhookSecret())
+            : null,
         filters: input.githubFilters ?? {},
       },
     },
@@ -324,6 +336,12 @@ export function updateRoutine(
           patch.githubEvent !== undefined
             ? patch.githubEvent?.trim() || null
             : current.triggers.github.event,
+        secret:
+          patch.githubEvent === null || patch.githubEvent === ''
+            ? null
+            : patch.githubSecret !== undefined
+              ? patch.githubSecret?.trim() || null
+              : current.triggers.github.secret,
         filters: patch.githubFilters ?? current.triggers.github.filters,
       },
     },
@@ -342,6 +360,9 @@ export function updateRoutine(
 
   if (next.triggers.api.enabled && !next.triggers.api.token) {
     next.triggers.api.token = generateRoutineToken()
+  }
+  if (next.triggers.github.event && !next.triggers.github.secret) {
+    next.triggers.github.secret = generateRoutineWebhookSecret()
   }
 
   file.routines[index] = next

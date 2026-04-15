@@ -12,6 +12,13 @@ import {
   listRoutines,
   updateRoutine,
 } from '../../services/routine/store.js'
+import {
+  ROUTINE_API_DEFAULT_HOST,
+  ROUTINE_API_DEFAULT_PORT,
+  getRoutineApiServerStatus,
+  startRoutineApiServer,
+  stopRoutineApiServer,
+} from '../../services/routine/apiServer.js'
 import { startRoutineRun } from '../../services/routine/runner.js'
 
 type TextResult = { type: 'text'; value: string }
@@ -82,18 +89,23 @@ function formatRoutineSummary(): string {
     '',
     'Subcommands:',
     '  list                              — List all routines',
-    '  show <id|name>                    — Show one routine in detail',
-    '  create <name> --prompt "<text>"   — Create a routine',
-    '     [--schedule "<cron>"] [--provider zai] [--model glm-5]',
-    '     [--repo owner/repo] [--api] [--api-token <token>]',
-    '     [--github-event pull_request.opened] [--max-runs-per-day 5]',
-    '  update <id|name> [flags...]       — Update an existing routine',
-    '  run <id|name> [--context "<text>"] — Run routine manually now',
-    '  delete <id|name>                  — Delete a routine',
-    '  logs [id|name]                    — Show recent routine runs',
-    '  enable <id|name>                  — Enable triggers',
-    '  disable <id|name>                 — Disable triggers',
-  ].join('\n')
+     '  show <id|name>                    — Show one routine in detail',
+     '  create <name> --prompt "<text>"   — Create a routine',
+     '     [--schedule "<cron>"] [--provider zai] [--model glm-5]',
+     '     [--repo owner/repo] [--api] [--api-token <token>]',
+     '     [--github-event pull_request] [--github-secret <secret>]',
+     '     [--max-runs-per-day 5]',
+     '  update <id|name> [flags...]       — Update an existing routine',
+     '  run <id|name> [--context "<text>"] — Run routine manually now',
+     '  delete <id|name>                  — Delete a routine',
+     '  logs [id|name]                    — Show recent routine runs',
+     '  enable <id|name>                  — Enable triggers',
+     '  disable <id|name>                 — Disable triggers',
+     `  api start [--host ${ROUTINE_API_DEFAULT_HOST}] [--port ${ROUTINE_API_DEFAULT_PORT}]`,
+     '                                   — Start local routine API server',
+     '  api stop                          — Stop the local routine API server',
+     '  api status                        — Show API server status',
+   ].join('\n')
 }
 
 function formatRoutine(routine: ReturnType<typeof getRoutine>): string {
@@ -105,7 +117,13 @@ function formatRoutine(routine: ReturnType<typeof getRoutine>): string {
     `   Provider: ${routine.provider ?? '(default)'}`,
     `   Model: ${routine.model ?? '(default)'}`,
     `   API: ${routine.triggers.api.enabled ? 'enabled' : 'disabled'}`,
+    ...(routine.triggers.api.token
+      ? [`   API token: ${routine.triggers.api.token}`]
+      : []),
     `   GitHub: ${routine.triggers.github.event ?? '(disabled)'}`,
+    ...(routine.triggers.github.secret
+      ? [`   GitHub secret: ${routine.triggers.github.secret}`]
+      : []),
     `   Repos: ${routine.repos.length > 0 ? routine.repos.join(', ') : '(none)'}`,
     `   Max runs/day: ${routine.maxRunsPerDay}`,
     `   Last run: ${routine.lastRun ?? '(never)'}`,
@@ -161,6 +179,7 @@ function handleCreate(tokens: string[]): TextResult {
     apiEnabled: boolFlag(flags, 'api') || flags.has('api-token'),
     apiToken: flag(flags, 'api-token') ?? null,
     githubEvent: flag(flags, 'github-event') ?? null,
+    githubSecret: flag(flags, 'github-secret') ?? null,
     maxRunsPerDay: flag(flags, 'max-runs-per-day')
       ? Number(flag(flags, 'max-runs-per-day'))
       : undefined,
@@ -175,6 +194,9 @@ function handleCreate(tokens: string[]): TextResult {
   ]
   if (routine.triggers.api.token) {
     lines.push(`   API token: ${routine.triggers.api.token}`)
+  }
+  if (routine.triggers.github.secret) {
+    lines.push(`   GitHub secret: ${routine.triggers.github.secret}`)
   }
   return toText(lines.join('\n'))
 }
@@ -209,6 +231,9 @@ function handleUpdate(tokens: string[]): TextResult {
     ...(boolFlag(flags, 'disable-api') ? { apiEnabled: false, apiToken: null } : {}),
     ...(nextGithubEvent !== undefined
       ? { githubEvent: nextGithubEvent === 'off' ? null : nextGithubEvent }
+      : {}),
+    ...(flag(flags, 'github-secret') !== undefined
+      ? { githubSecret: flag(flags, 'github-secret') ?? null }
       : {}),
     ...(flag(flags, 'max-runs-per-day') !== undefined
       ? { maxRunsPerDay: Number(flag(flags, 'max-runs-per-day')) }
@@ -275,6 +300,49 @@ function handleToggle(idOrName: string, enabled: boolean): TextResult {
   )
 }
 
+async function handleApi(tokens: string[]): Promise<TextResult> {
+  const { positional, flags } = parseTokens(tokens)
+  const action = positional[0] ?? 'status'
+
+  switch (action) {
+    case 'start': {
+      const status = await startRoutineApiServer({
+        host: flag(flags, 'host') ?? ROUTINE_API_DEFAULT_HOST,
+        port: flag(flags, 'port') ? Number(flag(flags, 'port')) : ROUTINE_API_DEFAULT_PORT,
+      })
+      return toText(
+        [
+          '✅ Routine API server is running',
+          `   URL: ${status.url}`,
+          `   Health: ${status.url}/health`,
+          '',
+          'Use the routine API token from /routine show <id> in the Authorization header.',
+        ].join('\n'),
+      )
+    }
+    case 'stop': {
+      const stopped = await stopRoutineApiServer()
+      return toText(stopped ? '🛑 Routine API server stopped.' : 'Routine API server is not running.')
+    }
+    case 'status': {
+      const status = getRoutineApiServerStatus()
+      if (!status.running) {
+        return toText('Routine API server is not running.')
+      }
+      return toText(
+        [
+          '🛰️ Routine API server',
+          `   URL: ${status.url}`,
+          `   Host: ${status.host}`,
+          `   Port: ${status.port}`,
+        ].join('\n'),
+      )
+    }
+    default:
+      return toText('Usage: /routine api <start|stop|status> [--host 127.0.0.1] [--port 8787]')
+  }
+}
+
 export async function call(args: string): Promise<TextResult> {
   const tokens = tokenize(args)
   const [subcommand, ...rest] = tokens
@@ -303,6 +371,8 @@ export async function call(args: string): Promise<TextResult> {
       return handleToggle(rest.join(' '), true)
     case 'disable':
       return handleToggle(rest.join(' '), false)
+    case 'api':
+      return handleApi(rest)
     default:
       return toText(formatRoutineSummary())
   }

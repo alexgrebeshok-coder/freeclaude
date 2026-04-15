@@ -8,6 +8,7 @@ import {
   createRoutine,
   deleteRoutine,
   generateRoutineToken,
+  generateRoutineWebhookSecret,
   getRoutine,
   getRoutineConfigPath,
   listRoutineRuns,
@@ -61,6 +62,17 @@ describe('routine store', () => {
     expect(routine.triggers.api.token).toMatch(/^fc_tok_/)
   })
 
+  test('createRoutine generates GitHub secret when GitHub trigger is enabled', () => {
+    const routine = createRoutine({
+      name: 'GitHub triage',
+      prompt: 'Handle pull requests.',
+      githubEvent: 'pull_request',
+    })
+
+    expect(routine.triggers.github.event).toBe('pull_request')
+    expect(routine.triggers.github.secret).toMatch(/^fc_hook_/)
+  })
+
   test('createRoutine rejects duplicate names', () => {
     createRoutine({ name: 'Duplicate', prompt: 'One' })
     expect(() =>
@@ -97,6 +109,21 @@ describe('routine store', () => {
     expect(updated.model).toBe('glm-5')
     expect(updated.repos).toEqual(['alexgrebeshok-coder/freeclaude'])
     expect(updated.maxRunsPerDay).toBe(2)
+  })
+
+  test('updateRoutine can set an explicit GitHub secret', () => {
+    const routine = createRoutine({
+      name: 'GitHub secret',
+      prompt: 'Handle repos.',
+      githubEvent: 'push',
+    })
+
+    const secret = generateRoutineWebhookSecret()
+    const updated = updateRoutine(routine.id, {
+      githubSecret: secret,
+    })
+
+    expect(updated.triggers.github.secret).toBe(secret)
   })
 
   test('setRoutineEnabled toggles the routine state', () => {
