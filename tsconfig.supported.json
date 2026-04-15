@@ -34,7 +34,8 @@
     "src/services/voice/voiceMode.ts",
     "src/services/voice/voiceService.ts",
     "src/utils/providerProfile.ts",
-    "src/utils/providerRecommendation.ts"
+    "src/utils/providerRecommendation.ts",
+    "src/commands/vault/vault.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
