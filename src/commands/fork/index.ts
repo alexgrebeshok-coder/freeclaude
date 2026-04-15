@@ -4,7 +4,7 @@ const fork = {
   type: 'local',
   name: 'fork',
   description:
-    'Forked Anthropic subagents are not supported in FreeClaude yet. Use the task or agent workflow instead.',
+    'Fork the current conversation context into a focused worker and give it a directive.',
   supportsNonInteractive: false,
   load: () => import('./fork.js'),
 } satisfies Command
