@@ -42,7 +42,11 @@
     "src/services/memory/consolidation.ts",
     "src/services/heartbeat/heartbeat.ts",
     "src/services/agents/agentBridge.ts",
-    "src/services/agents/agentProtocol.ts"
+    "src/services/agents/agentProtocol.ts",
+    "src/services/context/compactor.ts",
+    "src/services/context/budgetTracker.ts",
+    "src/services/context/degradation.ts",
+    "src/services/context/providerWindows.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
