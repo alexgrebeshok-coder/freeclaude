@@ -1,0 +1,46 @@
+{
+  "id": "freeclaude",
+  "name": "FreeClaude Coding Agent",
+  "version": "1.0.0",
+  "description": "Integrates FreeClaude coding agent into OpenClaw. Provides /fc slash command for direct coding tasks and exposes FreeClaude as an MCP server for agent tool use.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "wrapper": {
+        "type": "string",
+        "default": "",
+        "description": "Path to the FreeClaude wrapper script (auto-detected if empty)"
+      },
+      "binary": {
+        "type": "string",
+        "default": "freeclaude",
+        "description": "Path to FreeClaude binary"
+      },
+      "defaultModel": {
+        "type": "string",
+        "default": "",
+        "description": "Default model override (empty = use ~/.freeclaude.json default)"
+      },
+      "timeout": {
+        "type": "integer",
+        "default": 120,
+        "description": "Default timeout in seconds for FreeClaude invocations"
+      },
+      "stateDir": {
+        "type": "string",
+        "default": "~/.openclaw/workspace/.openclaw/extensions/freeclaude/state",
+        "description": "Directory for persisted FreeClaude run/session metadata used by session-native orchestration"
+      }
+    }
+  },
+  "mcpServers": {
+    "freeclaude": {
+      "command": "node",
+      "args": ["./mcp-server.mjs"]
+    }
+  },
+  "skills": [
+    "./skills/freeclaude"
+  ]
+}
