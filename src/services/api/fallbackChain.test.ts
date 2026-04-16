@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 const ORIGINAL_FREECLAUDE_CONFIG_PATH = process.env.FREECLAUDE_CONFIG_PATH
 const ORIGINAL_OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const ORIGINAL_OPENROUTER_MODEL = process.env.OPENROUTER_MODEL
+const ORIGINAL_PREFER_ENV_OPENROUTER = process.env.FREECLAUDE_PREFER_ENV_OPENROUTER
 let testConfigDir = ''
 let testConfigPath = ''
 
@@ -20,6 +21,7 @@ beforeEach(() => {
   process.env.FREECLAUDE_CONFIG_PATH = testConfigPath
   delete process.env.OPENROUTER_API_KEY
   delete process.env.OPENROUTER_MODEL
+  delete process.env.FREECLAUDE_PREFER_ENV_OPENROUTER
 
   // Ensure a test config exists so FallbackChain always has providers
   writeFileSync(testConfigPath, JSON.stringify({
@@ -49,6 +51,12 @@ afterEach(() => {
     delete process.env.OPENROUTER_MODEL
   } else {
     process.env.OPENROUTER_MODEL = ORIGINAL_OPENROUTER_MODEL
+  }
+
+  if (ORIGINAL_PREFER_ENV_OPENROUTER === undefined) {
+    delete process.env.FREECLAUDE_PREFER_ENV_OPENROUTER
+  } else {
+    process.env.FREECLAUDE_PREFER_ENV_OPENROUTER = ORIGINAL_PREFER_ENV_OPENROUTER
   }
 })
 
@@ -168,6 +176,25 @@ describe('FallbackChain', () => {
     const openrouter = chain.getProviders().find(provider => provider.name === 'openrouter')
 
     expect(openrouter?.model).toBe('deepseek/deepseek-chat')
+  })
+
+  test('prepends env-backed OpenRouter when explicitly preferred', () => {
+    writeFileSync(testConfigPath, JSON.stringify({
+      providers: [
+        { name: 'zai', baseUrl: 'https://api.z.ai/api/coding/paas/v4', apiKey: 'test-key', model: 'glm-4.7-flash', priority: 1 },
+        { name: 'ollama', baseUrl: 'http://localhost:11434/v1', apiKey: 'ollama', model: 'qwen2.5:3b', priority: 2 },
+      ],
+    }))
+    process.env.OPENROUTER_API_KEY = 'env-openrouter-key'
+    process.env.FREECLAUDE_PREFER_ENV_OPENROUTER = '1'
+
+    const chain = new FallbackChain()
+
+    expect(chain.getProviders().map(provider => provider.name)).toEqual([
+      'openrouter',
+      'zai',
+      'ollama',
+    ])
   })
 
   test('getStats returns initial state', () => {

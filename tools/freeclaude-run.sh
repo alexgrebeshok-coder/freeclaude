@@ -3,7 +3,7 @@
 # Usage:
 #   freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS]
 #                    [--resume SESSION_ID] [--fork-session]
-#                    [--permission-mode MODE] [--no-memory]
+#                    [--permission-mode MODE] [--bare|--no-bare] [--no-memory]
 #                    [--output-format text|json|stream-json] "prompt"
 #
 # Modes:
@@ -19,8 +19,14 @@ TIMEOUT=120
 OUTPUT_FORMAT="text"
 PROMPT=""
 USER_PROMPT=""
-FC_BINARY="${FC_BINARY:-freeclaude}"
 OPENCLAW_ROOT="${OPENCLAW_ROOT:-$HOME/.openclaw}"
+if [[ -n "${FC_BINARY:-}" ]]; then
+  FC_BINARY="$FC_BINARY"
+elif [[ -x "$OPENCLAW_ROOT/workspace/freeclaude/bin/freeclaude" ]]; then
+  FC_BINARY="$OPENCLAW_ROOT/workspace/freeclaude/bin/freeclaude"
+else
+  FC_BINARY="freeclaude"
+fi
 BRIDGE_SCRIPT="$OPENCLAW_ROOT/workspace/tools/fc-memory-bridge.sh"
 FC_STATE_DIR="${FC_STATE_DIR:-$OPENCLAW_ROOT/workspace/.openclaw/extensions/freeclaude/state}"
 FC_PERSIST_RUN_STATE="${FC_PERSIST_RUN_STATE:-1}"
@@ -29,6 +35,8 @@ MEMORY_CONTEXT_INJECTED=0
 RESUME_SESSION_ID=""
 FORK_SESSION=0
 PERMISSION_MODE="${PERMISSION_MODE:-bypassPermissions}"
+USE_BARE="${FC_BARE_MODE:-0}"
+PREFER_ENV_OPENROUTER="${FC_PREFER_ENV_OPENROUTER:-auto}"
 
 emit_wrapper_event() {
   local event_name="$1"
@@ -40,6 +48,7 @@ emit_wrapper_event() {
   WRAPPER_MEMORY_ENABLED="$MEMORY_BRIDGE_ENABLED" \
   WRAPPER_MEMORY_INJECTED="$MEMORY_CONTEXT_INJECTED" \
   WRAPPER_PERMISSION_MODE="$PERMISSION_MODE" \
+  WRAPPER_BARE_MODE="$USE_BARE" \
   python3 - <<'PY'
 import json
 import os
@@ -54,6 +63,7 @@ payload = {
     "memoryBridgeEnabled": os.environ.get("WRAPPER_MEMORY_ENABLED") == "1",
     "memoryContextInjected": os.environ.get("WRAPPER_MEMORY_INJECTED") == "1",
     "permissionMode": os.environ.get("WRAPPER_PERMISSION_MODE") or "bypassPermissions",
+    "bareMode": os.environ.get("WRAPPER_BARE_MODE", "1") != "0",
 }
 print(json.dumps(payload, ensure_ascii=False), flush=True)
 PY
@@ -74,6 +84,7 @@ build_result_envelope() {
   WRAPPER_MEMORY_ENABLED="$MEMORY_BRIDGE_ENABLED" \
   WRAPPER_MEMORY_INJECTED="$MEMORY_CONTEXT_INJECTED" \
   WRAPPER_PERMISSION_MODE="$PERMISSION_MODE" \
+  WRAPPER_BARE_MODE="$USE_BARE" \
   python3 - "$stdout_file" "$stderr_file" <<'PY'
 import json
 import os
@@ -93,6 +104,7 @@ provider_stats = os.environ.get("WRAPPER_PROVIDER_STATS") or None
 memory_bridge_enabled = os.environ.get("WRAPPER_MEMORY_ENABLED") == "1"
 memory_context_injected = os.environ.get("WRAPPER_MEMORY_INJECTED") == "1"
 permission_mode = os.environ.get("WRAPPER_PERMISSION_MODE") or "bypassPermissions"
+bare_mode = os.environ.get("WRAPPER_BARE_MODE", "1") != "0"
 
 filtered_errors = "\n".join(
     line for line in stderr_text.splitlines() if line.strip() and not line.startswith("[FreeClaude]")
@@ -120,6 +132,10 @@ if provider_stats:
         else:
             provider_name = provider_segment
     provider_fallback = "(fallback)" in provider_stats
+elif model_hint and "/" in model_hint:
+    provider_name, inferred_model = model_hint.split("/", 1)
+    if inferred_model and not actual_model:
+        actual_model = inferred_model
 
 for line in stdout_text.splitlines():
     line = line.strip()
@@ -194,6 +210,8 @@ for line in summary_source.splitlines():
     if line:
         summary = line
         break
+if not summary and status == "success":
+    summary = "Completed successfully."
 
 envelope = {
     "type": "wrapper_result",
@@ -217,6 +235,7 @@ envelope = {
     "memoryBridgeEnabled": memory_bridge_enabled,
     "memoryContextInjected": memory_context_injected,
     "permissionMode": permission_mode,
+    "bareMode": bare_mode,
     "filesTouched": [],
     "commandsRun": [],
     "exitCode": exit_code,
@@ -378,6 +397,14 @@ while [[ $# -gt 0 ]]; do
       PERMISSION_MODE="$2"
       shift 2
       ;;
+    --bare)
+      USE_BARE=1
+      shift
+      ;;
+    --no-bare)
+      USE_BARE=0
+      shift
+      ;;
     --no-memory)
       FC_MEMORY_BRIDGE=0
       shift
@@ -396,7 +423,7 @@ done
 
 if [[ -z "$PROMPT" ]]; then
   echo "Error: No prompt provided"
-  echo "Usage: freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS] [--resume SESSION_ID] [--fork-session] [--permission-mode MODE] [--no-memory] [--output-format text|json|stream-json] \"prompt\""
+  echo "Usage: freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS] [--resume SESSION_ID] [--fork-session] [--permission-mode MODE] [--bare|--no-bare] [--no-memory] [--output-format text|json|stream-json] \"prompt\""
   exit 1
 fi
 
@@ -411,6 +438,16 @@ esac
 
 if [[ -z "$PERMISSION_MODE" ]]; then
   echo "Error: Permission mode must not be empty"
+  exit 1
+fi
+
+if [[ "$USE_BARE" != "0" && "$USE_BARE" != "1" ]]; then
+  echo "Error: FC_BARE_MODE must be 0 or 1"
+  exit 1
+fi
+
+if [[ "$PREFER_ENV_OPENROUTER" != "auto" && "$PREFER_ENV_OPENROUTER" != "0" && "$PREFER_ENV_OPENROUTER" != "1" ]]; then
+  echo "Error: FC_PREFER_ENV_OPENROUTER must be auto, 0, or 1"
   exit 1
 fi
 
@@ -455,7 +492,27 @@ $USER_PROMPT"
   fi
 fi
 
-CMD_BASE=("$FC_BINARY" "--print" "--bare" "--permission-mode" "$PERMISSION_MODE")
+case "$PREFER_ENV_OPENROUTER" in
+  1)
+    export FREECLAUDE_PREFER_ENV_OPENROUTER=1
+    ;;
+  0)
+    export FREECLAUDE_PREFER_ENV_OPENROUTER=0
+    ;;
+  auto)
+    if [[ -z "$MODEL" && -n "${OPENROUTER_API_KEY:-}" ]]; then
+      export FREECLAUDE_PREFER_ENV_OPENROUTER=1
+    else
+      unset FREECLAUDE_PREFER_ENV_OPENROUTER
+    fi
+    ;;
+esac
+
+CMD_BASE=("$FC_BINARY" "--print")
+if [[ "$USE_BARE" == "1" ]]; then
+  CMD_BASE+=("--bare")
+fi
+CMD_BASE+=("--permission-mode" "$PERMISSION_MODE")
 if [[ -n "$MODEL" ]]; then
   CMD_BASE+=("--model" "$MODEL")
 fi
@@ -477,7 +534,11 @@ if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
   STREAM_CMD=(
     "$FC_BINARY"
     "--print"
-    "--bare"
+  )
+  if [[ "$USE_BARE" == "1" ]]; then
+    STREAM_CMD+=("--bare")
+  fi
+  STREAM_CMD+=(
     "--permission-mode"
     "$PERMISSION_MODE"
     "--verbose"
@@ -538,7 +599,11 @@ if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
 fi
 
 if [[ "$OUTPUT_FORMAT" == "json" ]]; then
-  JSON_CMD=("$FC_BINARY" "--print" "--bare" "--permission-mode" "$PERMISSION_MODE" "--output-format" "json")
+  JSON_CMD=("$FC_BINARY" "--print")
+  if [[ "$USE_BARE" == "1" ]]; then
+    JSON_CMD+=("--bare")
+  fi
+  JSON_CMD+=("--permission-mode" "$PERMISSION_MODE" "--output-format" "json")
   if [[ -n "$MODEL" ]]; then
     JSON_CMD+=("--model" "$MODEL")
   fi

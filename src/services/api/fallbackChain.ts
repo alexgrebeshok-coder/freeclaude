@@ -66,6 +66,18 @@ const ENV_PROVIDER_SPECS: EnvProviderSpec[] = [
   },
 ]
 
+function isTruthyEnv(value: string | undefined): boolean {
+  switch ((value || '').trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'on':
+      return true
+    default:
+      return false
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Config file path
 // ---------------------------------------------------------------------------
@@ -265,11 +277,16 @@ export class FallbackChain {
     const existingNames = new Set(
       this.providers.map(provider => provider.name.toLowerCase()),
     )
+    const preferEnvOpenRouter =
+      isTruthyEnv(process.env.FREECLAUDE_PREFER_ENV_OPENROUTER)
     const firstLocalProviderIndex = this.providers.findIndex(provider =>
       isLocalProvider(provider.baseUrl),
     )
-    let insertIndex =
-      firstLocalProviderIndex >= 0 ? firstLocalProviderIndex : this.providers.length
+    let insertIndex = preferEnvOpenRouter
+      ? 0
+      : firstLocalProviderIndex >= 0
+        ? firstLocalProviderIndex
+        : this.providers.length
 
     for (const spec of ENV_PROVIDER_SPECS) {
       if (existingNames.has(spec.name)) {
@@ -298,7 +315,10 @@ export class FallbackChain {
       existingNames.add(spec.name)
       insertIndex += 1
       this.enabled = true
-      this.log('info', `Appended ${spec.name} provider from ${spec.envKey}`)
+      this.log(
+        'info',
+        `${preferEnvOpenRouter ? 'Prepended' : 'Appended'} ${spec.name} provider from ${spec.envKey}`,
+      )
     }
   }
 
