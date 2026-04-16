@@ -132,4 +132,24 @@ describe('freeclaudeConfig', () => {
       model: 'anthropic/claude-sonnet-4',
     })
   })
+
+  test('parseProviderQualifiedModel preserves router-style model ids for known providers without config', () => {
+    expect(parseProviderQualifiedModel('deepseek/deepseek-r1')).toEqual({
+      model: 'deepseek/deepseek-r1',
+    })
+  })
+
+  test('parseProviderQualifiedModel still honors configured provider overrides', () => {
+    expect(
+      parseProviderQualifiedModel('deepseek/deepseek-r1', [
+        {
+          name: 'deepseek',
+          baseUrl: 'https://api.deepseek.com/v1',
+        },
+      ]),
+    ).toEqual({
+      providerName: 'deepseek',
+      model: 'deepseek-r1',
+    })
+  })
 })

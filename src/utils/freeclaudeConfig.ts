@@ -261,11 +261,25 @@ export function parseProviderQualifiedModel(
     return { model: trimmedModel }
   }
 
-  const providerMatch =
-    providers?.find(provider => normalizeName(provider.name) === providerPart) ??
-    findKnownProviderDefinition({ name: providerPart })
+  const configuredProviderMatch = providers?.find(
+    provider => normalizeName(provider.name) === providerPart,
+  )
+  const knownProviderMatch = configuredProviderMatch
+    ? undefined
+    : findKnownProviderDefinition({ name: providerPart })
+  const providerMatch = configuredProviderMatch ?? knownProviderMatch
 
   if (!providerMatch) {
+    return { model: trimmedModel }
+  }
+
+  if (
+    !configuredProviderMatch &&
+    knownProviderMatch &&
+    !knownProviderMatch.models.some(
+      candidate => normalizeName(candidate) === normalizeName(modelPart),
+    )
+  ) {
     return { model: trimmedModel }
   }
 
