@@ -13,7 +13,12 @@ import {
 import {
   buildTask,
   getStatusText,
+  normalizeAdditionalDirs,
+  normalizeJsonSchemaOption,
+  normalizeStringListOption,
   readString,
+  readPositiveInteger,
+  readPositiveNumber,
   runWrappedSync,
   WrappedRunError,
 } from "./freeclaude-backend.mjs";
@@ -34,22 +39,7 @@ let stateDir = DEFAULT_STATE_DIR;
 
 function resolveRuntimeConfig(api) {
   const cfg = api.pluginConfig ?? {};
-  
-  // Auto-detect wrapper: try bundled, then workspace, then PATH
-  let wrapper = typeof cfg.wrapper === "string" && cfg.wrapper.trim() ? cfg.wrapper.trim() : "";
-  if (!wrapper) {
-    // Try bundled wrapper (inside npm package)
-    const bundledWrapper = new URL("../tools/freeclaude-run.sh", import.meta.url).pathname;
-    if (fs.existsSync(bundledWrapper)) {
-      wrapper = bundledWrapper;
-    } else {
-      // Fallback to workspace tools
-      wrapper = api.resolvePath("~/.openclaw/workspace/tools/freeclaude-run.sh");
-    }
-  } else {
-    wrapper = api.resolvePath(wrapper);
-  }
-  
+  const wrapper = api.resolvePath(cfg.wrapper || "~/.openclaw/workspace/tools/freeclaude-run.sh");
   const binary = typeof cfg.binary === "string" && cfg.binary.trim() ? cfg.binary.trim() : "freeclaude";
   const defaultModel =
     typeof cfg.defaultModel === "string" && cfg.defaultModel.trim() ? cfg.defaultModel.trim() : "";
@@ -200,6 +190,20 @@ function getRetryBaseInput(run) {
     resume: true,
     resumeSessionId: run.freeClaudeSessionId || run.resumeSessionId || "",
     forkSession: false,
+    permissionMode: run.permissionMode,
+    bareMode: typeof run.bareMode === "boolean" ? run.bareMode : undefined,
+    maxTurns: run.maxTurns,
+    effort: run.effort,
+    maxBudgetUsd: run.maxBudgetUsd,
+    fallbackModel: run.fallbackModel,
+    allowedTools: run.allowedTools,
+    disallowedTools: run.disallowedTools,
+    tools: run.tools,
+    systemPrompt: run.systemPrompt,
+    appendSystemPrompt: run.appendSystemPrompt,
+    jsonSchema: run.jsonSchema,
+    noPersist: run.noPersist === true,
+    addDirs: Array.isArray(run.extraDirs) ? run.extraDirs : [],
     parentRunId: run.runId,
   };
 }
@@ -215,6 +219,21 @@ function createRunRecord(normalized) {
     model: normalized.model || normalized.runtime.defaultModel || undefined,
     timeout: normalized.timeout,
     includeMemory: normalized.includeMemory,
+    permissionMode: normalized.permissionMode,
+    bareMode: normalized.bareMode,
+    maxTurns: normalized.maxTurns,
+    effort: normalized.effort,
+    maxBudgetUsd: normalized.maxBudgetUsd,
+    fallbackModel: normalized.fallbackModel,
+    allowedTools: normalized.allowedTools,
+    disallowedTools: normalized.disallowedTools,
+    tools: normalized.tools,
+    systemPrompt: normalized.systemPrompt,
+    appendSystemPrompt: normalized.appendSystemPrompt,
+    hasCustomPrompt: normalized.hasCustomPrompt,
+    jsonSchema: normalized.jsonSchema,
+    noPersist: normalized.noPersist === true,
+    extraDirs: normalized.extraDirs,
     sessionKey: normalized.sessionKey || "",
     resumeSessionId: normalized.resumeSessionId || "",
     freeClaudeSessionId: "",
@@ -309,6 +328,24 @@ function normalizeInput(api, input = {}, context = {}) {
       ? Math.max(10, Math.floor(sourceInput.timeout))
       : runtime.timeout;
   const includeMemory = sourceInput.includeMemory !== false;
+  const permissionMode = readString(sourceInput.permissionMode);
+  const bareMode =
+    typeof sourceInput.bareMode === "boolean" ? sourceInput.bareMode : undefined;
+  const maxTurns = readPositiveInteger(sourceInput.maxTurns);
+  const effortCandidate = readString(sourceInput.effort).toLowerCase();
+  const effort =
+    ["low", "medium", "high", "max"].includes(effortCandidate) ? effortCandidate : undefined;
+  const maxBudgetUsd = readPositiveNumber(sourceInput.maxBudgetUsd);
+  const fallbackModel = readString(sourceInput.fallbackModel);
+  const allowedTools = normalizeStringListOption(sourceInput.allowedTools);
+  const disallowedTools = normalizeStringListOption(sourceInput.disallowedTools);
+  const tools = normalizeStringListOption(sourceInput.tools);
+  const systemPrompt = readString(sourceInput.systemPrompt);
+  const appendSystemPrompt = readString(sourceInput.appendSystemPrompt);
+  const hasCustomPrompt = Boolean(systemPrompt || appendSystemPrompt);
+  const jsonSchema = normalizeJsonSchemaOption(sourceInput.jsonSchema);
+  const noPersist =
+    sourceInput.noPersist === true || sourceInput.noSessionPersistence === true;
   const background = sourceInput.background === true;
   const sessionKey = resolveSessionKey(sourceInput, context);
   const explicitResumeSessionId = readString(sourceInput.resumeSessionId || sourceInput.resume);
@@ -326,6 +363,11 @@ function normalizeInput(api, input = {}, context = {}) {
     throw new Error(`workdir not found: ${workdir}`);
   }
 
+  const extraDirs = normalizeAdditionalDirs(
+    sourceInput.addDirs || sourceInput.extraDirs || sourceInput.addDir,
+    api.resolvePath,
+  ).filter((dir) => dir !== workdir);
+
   return {
     runtime,
     task,
@@ -334,6 +376,21 @@ function normalizeInput(api, input = {}, context = {}) {
     model,
     timeout,
     includeMemory,
+    permissionMode,
+    bareMode,
+    maxTurns,
+    effort,
+    maxBudgetUsd,
+    fallbackModel,
+    allowedTools,
+    disallowedTools,
+    tools,
+    systemPrompt,
+    appendSystemPrompt,
+    hasCustomPrompt,
+    jsonSchema,
+    noPersist,
+    extraDirs,
     background,
     sessionKey,
     resumeSessionId,
@@ -348,11 +405,62 @@ function createWrapperArgs(input, outputFormat) {
   if (input.model) {
     args.push("--model", input.model);
   }
+  if (input.includeMemory === false) {
+    args.push("--no-memory");
+  }
   if (input.resumeSessionId) {
     args.push("--resume", input.resumeSessionId);
   }
   if (input.forkSession) {
     args.push("--fork-session");
+  }
+  if (input.permissionMode) {
+    args.push("--permission-mode", input.permissionMode);
+  }
+  if (input.bareMode === true) {
+    args.push("--bare");
+  } else if (input.bareMode === false) {
+    args.push("--no-bare");
+  }
+  if (input.maxTurns) {
+    args.push("--max-turns", String(input.maxTurns));
+  }
+  if (input.effort) {
+    args.push("--effort", input.effort);
+  }
+  if (input.maxBudgetUsd) {
+    args.push("--max-budget-usd", String(input.maxBudgetUsd));
+  }
+  if (input.fallbackModel) {
+    args.push("--fallback-model", input.fallbackModel);
+  }
+  if (input.allowedTools) {
+    args.push("--allowed-tools", input.allowedTools);
+  }
+  if (input.disallowedTools) {
+    args.push("--disallowed-tools", input.disallowedTools);
+  }
+  if (input.tools) {
+    args.push("--tools", input.tools);
+  }
+  if (input.systemPrompt) {
+    args.push("--system-prompt", input.systemPrompt);
+  }
+  if (input.appendSystemPrompt) {
+    args.push("--append-system-prompt", input.appendSystemPrompt);
+  }
+  if (input.jsonSchema) {
+    args.push("--json-schema", input.jsonSchema);
+  }
+  if (input.noPersist === true) {
+    args.push("--no-persist");
+  }
+  if (Array.isArray(input.extraDirs)) {
+    for (const dir of input.extraDirs) {
+      if (dir) {
+        args.push("--add-dir", dir);
+      }
+    }
   }
   args.push(input.builtTask);
   return args;
@@ -375,6 +483,18 @@ function summarizeRun(run) {
     workdir: run.workdir,
     model: run.model,
     timeout: run.timeout,
+    permissionMode: run.permissionMode,
+    bareMode: run.bareMode,
+    maxTurns: run.maxTurns,
+    effort: run.effort,
+    maxBudgetUsd: run.maxBudgetUsd,
+    fallbackModel: run.fallbackModel,
+    allowedTools: run.allowedTools,
+    disallowedTools: run.disallowedTools,
+    tools: run.tools,
+    hasCustomPrompt: run.hasCustomPrompt === true,
+    noPersist: run.noPersist === true,
+    extraDirs: Array.isArray(run.extraDirs) ? run.extraDirs : [],
     sessionKey: run.sessionKey || undefined,
     resumeSessionId: run.resumeSessionId || undefined,
     freeClaudeSessionId: run.freeClaudeSessionId || run.result?.sessionId || undefined,
@@ -462,12 +582,26 @@ function runFreeClaude(api, input = {}, context = {}) {
     workdir: normalized.workdir,
     task: normalized.task,
     mode: normalized.mode,
-    model: normalized.model,
-    timeoutSeconds: normalized.timeout,
-    includeMemory: normalized.includeMemory,
-    sessionKey: normalized.sessionKey,
-    resumeSessionId: normalized.resumeSessionId,
-    forkSession: normalized.forkSession,
+      model: normalized.model,
+      timeoutSeconds: normalized.timeout,
+      includeMemory: normalized.includeMemory,
+      permissionMode: normalized.permissionMode,
+      bareMode: normalized.bareMode,
+      maxTurns: normalized.maxTurns,
+      effort: normalized.effort,
+      maxBudgetUsd: normalized.maxBudgetUsd,
+      fallbackModel: normalized.fallbackModel,
+      allowedTools: normalized.allowedTools,
+      disallowedTools: normalized.disallowedTools,
+      tools: normalized.tools,
+      systemPrompt: normalized.systemPrompt,
+      appendSystemPrompt: normalized.appendSystemPrompt,
+      jsonSchema: normalized.jsonSchema,
+      noPersist: normalized.noPersist,
+      extraDirs: normalized.extraDirs,
+      sessionKey: normalized.sessionKey,
+      resumeSessionId: normalized.resumeSessionId,
+      forkSession: normalized.forkSession,
     persistBinding: false,
     lastRunId: run.runId,
   })
@@ -603,6 +737,20 @@ function formatRunState(run) {
     lines.push(`Resumed from: ${state.resumeSessionId}`);
   }
   if (state.parentRunId) lines.push(`Parent run: ${state.parentRunId}`);
+  if (state.permissionMode) lines.push(`Permission mode: ${state.permissionMode}`);
+  if (typeof state.bareMode === "boolean") lines.push(`Bare mode: ${state.bareMode ? "on" : "off"}`);
+  if (state.maxTurns) lines.push(`Max turns: ${state.maxTurns}`);
+  if (state.effort) lines.push(`Effort: ${state.effort}`);
+  if (state.maxBudgetUsd) lines.push(`Max budget: $${state.maxBudgetUsd}`);
+  if (state.fallbackModel) lines.push(`Fallback model: ${state.fallbackModel}`);
+  if (state.allowedTools) lines.push(`Allowed tools: ${state.allowedTools}`);
+  if (state.disallowedTools) lines.push(`Disallowed tools: ${state.disallowedTools}`);
+  if (state.tools) lines.push(`Tool whitelist: ${state.tools}`);
+  if (state.hasCustomPrompt) lines.push("Custom prompt: yes");
+  if (state.noPersist) lines.push("Session persistence: disabled");
+  if (Array.isArray(state.extraDirs) && state.extraDirs.length) {
+    lines.push(`Additional dirs: ${state.extraDirs.join(", ")}`);
+  }
   if (state.lastEvent) lines.push(`Last event: ${state.lastEvent}`);
   if (state.summary) lines.push(`Summary: ${state.summary}`);
   if (state.partialOutput) lines.push(`Preview:\n${state.partialOutput}`);
@@ -626,6 +774,20 @@ function parseCommandArgs(raw) {
     resume: true,
     resumeSessionId: "",
     forkSession: false,
+    permissionMode: "",
+    bareMode: undefined,
+    maxTurns: undefined,
+    effort: "",
+    maxBudgetUsd: undefined,
+    fallbackModel: "",
+    allowedTools: "",
+    disallowedTools: "",
+    tools: "",
+    systemPrompt: "",
+    appendSystemPrompt: "",
+    jsonSchema: "",
+    noPersist: false,
+    addDirs: [],
     limit: undefined,
     status: "",
     query: "",
@@ -667,6 +829,84 @@ function parseCommandArgs(raw) {
     }
     if (token === "--mode" && tokens[i + 1]) {
       result.mode = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if ((token === "--permission-mode" || token === "--permissionMode") && tokens[i + 1]) {
+      result.permissionMode = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (token === "--bare") {
+      result.bareMode = true;
+      continue;
+    }
+    if (token === "--no-bare") {
+      result.bareMode = false;
+      continue;
+    }
+    if ((token === "--max-turns" || token === "--maxTurns") && tokens[i + 1]) {
+      const parsed = Number.parseInt(unquote(tokens[i + 1]), 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        result.maxTurns = parsed;
+      }
+      i += 1;
+      continue;
+    }
+    if (token === "--effort" && tokens[i + 1]) {
+      result.effort = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if ((token === "--max-budget-usd" || token === "--maxBudgetUsd") && tokens[i + 1]) {
+      const parsed = Number.parseFloat(unquote(tokens[i + 1]));
+      if (Number.isFinite(parsed) && parsed > 0) {
+        result.maxBudgetUsd = parsed;
+      }
+      i += 1;
+      continue;
+    }
+    if ((token === "--fallback-model" || token === "--fallbackModel") && tokens[i + 1]) {
+      result.fallbackModel = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if ((token === "--allowed-tools" || token === "--allowedTools") && tokens[i + 1]) {
+      result.allowedTools = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if ((token === "--disallowed-tools" || token === "--disallowedTools") && tokens[i + 1]) {
+      result.disallowedTools = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (token === "--tools" && tokens[i + 1]) {
+      result.tools = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if ((token === "--system-prompt" || token === "--systemPrompt") && tokens[i + 1]) {
+      result.systemPrompt = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if ((token === "--append-system-prompt" || token === "--appendSystemPrompt") && tokens[i + 1]) {
+      result.appendSystemPrompt = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if ((token === "--json-schema" || token === "--jsonSchema") && tokens[i + 1]) {
+      result.jsonSchema = unquote(tokens[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (token === "--no-persist" || token === "--no-session-persistence") {
+      result.noPersist = true;
+      continue;
+    }
+    if ((token === "--add-dir" || token === "--addDir") && tokens[i + 1]) {
+      result.addDirs.push(unquote(tokens[i + 1]));
       i += 1;
       continue;
     }
@@ -754,6 +994,76 @@ const runToolParameters = {
       type: "boolean",
       description: "Whether to inject OpenClaw memory context before running.",
     },
+    permissionMode: {
+      type: "string",
+      description: "Optional FreeClaude permission mode override (for example: bypassPermissions or plan).",
+    },
+    bareMode: {
+      type: "boolean",
+      description: "Override wrapper bare mode. true forces --bare, false forces --no-bare.",
+    },
+    maxTurns: {
+      type: "number",
+      description: "Optional maximum turn limit for the FreeClaude run.",
+    },
+    effort: {
+      type: "string",
+      enum: ["low", "medium", "high", "max"],
+      description: "Optional reasoning effort level.",
+    },
+    maxBudgetUsd: {
+      type: "number",
+      description: "Optional budget cap in USD for the run.",
+    },
+    fallbackModel: {
+      type: "string",
+      description: "Optional model to fall back to if the primary model fails.",
+    },
+    allowedTools: {
+      oneOf: [
+        { type: "string" },
+        { type: "array", items: { type: "string" } },
+      ],
+      description: "Optional tool allowlist passed through to FreeClaude.",
+    },
+    disallowedTools: {
+      oneOf: [
+        { type: "string" },
+        { type: "array", items: { type: "string" } },
+      ],
+      description: "Optional tool denylist passed through to FreeClaude.",
+    },
+    tools: {
+      oneOf: [
+        { type: "string" },
+        { type: "array", items: { type: "string" } },
+      ],
+      description: "Optional exact tool set exposed to FreeClaude.",
+    },
+    systemPrompt: {
+      type: "string",
+      description: "Optional full system prompt override.",
+    },
+    appendSystemPrompt: {
+      type: "string",
+      description: "Optional system prompt suffix appended to the default system prompt.",
+    },
+    jsonSchema: {
+      oneOf: [
+        { type: "string" },
+        { type: "object" },
+      ],
+      description: "Optional JSON schema response contract. Accepts a JSON string or object.",
+    },
+    noPersist: {
+      type: "boolean",
+      description: "Disable FreeClaude session persistence for this run.",
+    },
+    addDirs: {
+      type: "array",
+      items: { type: "string" },
+      description: "Additional directories FreeClaude may access beyond workdir.",
+    },
     sessionKey: {
       type: "string",
       description: "Stable OpenClaw session key used to bind this task to a resumable FreeClaude session.",
@@ -835,12 +1145,12 @@ export default function register(api) {
         return {
           text: [
             "Usage:",
-            "/fc status",
-            "/fc runs [--limit N] [--status STATUS] [--mode MODE] [--session KEY] [--workdir PATH] [--query TEXT]",
-            "/fc sessions [--limit N] [--status STATUS] [--mode MODE] [--session KEY] [--workdir PATH] [--query TEXT]",
-            "/fc [--session KEY] [--workdir PATH] [--model MODEL] [--timeout SECONDS] [--mode code|review|debug|explain|test|refactor] [--no-memory] [--fresh] [--resume SESSION_ID] [--fork-session] task",
-            "/fc start [same flags] task",
-            "/fc poll <runId>",
+             "/fc status",
+             "/fc runs [--limit N] [--status STATUS] [--mode MODE] [--session KEY] [--workdir PATH] [--query TEXT]",
+             "/fc sessions [--limit N] [--status STATUS] [--mode MODE] [--session KEY] [--workdir PATH] [--query TEXT]",
+             "/fc [--session KEY] [--workdir PATH] [--add-dir PATH] [--model MODEL] [--fallback-model MODEL] [--timeout SECONDS] [--mode code|review|debug|explain|test|refactor] [--permission-mode MODE] [--bare|--no-bare] [--max-turns N] [--effort low|medium|high|max] [--max-budget-usd USD] [--allowed-tools TOOLS] [--disallowed-tools TOOLS] [--tools TOOLS] [--system-prompt TEXT] [--append-system-prompt TEXT] [--json-schema JSON] [--no-persist] [--no-memory] [--fresh] [--resume SESSION_ID] [--fork-session] task",
+             "/fc start [same flags] task",
+             "/fc poll <runId>",
             "/fc result <runId>",
             "/fc cancel <runId>",
             "/fc retry <runId>",

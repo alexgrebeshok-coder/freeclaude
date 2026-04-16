@@ -25,8 +25,13 @@ import {
   DEFAULT_STATE_DIR,
 } from "./runtime-state.mjs";
 import {
-  buildTask,
   getStatusText,
+  normalizeAdditionalDirs,
+  normalizeJsonSchemaOption,
+  normalizeStringListOption,
+  readPositiveInteger,
+  readPositiveNumber,
+  readString,
   resolveResumeSessionId,
   runWrappedSync,
 } from "./freeclaude-backend.mjs";
@@ -147,6 +152,76 @@ const COMMON_TOOL_PROPERTIES = {
     type: "boolean",
     description: "Whether to inject OpenClaw memory context before running the task (default: true)."
   },
+  permissionMode: {
+    type: "string",
+    description: "Optional FreeClaude permission mode override (for example: bypassPermissions or plan)."
+  },
+  bareMode: {
+    type: "boolean",
+    description: "Override wrapper bare mode. true forces --bare, false forces --no-bare."
+  },
+  maxTurns: {
+    type: "number",
+    description: "Optional maximum turn limit for the FreeClaude run."
+  },
+  effort: {
+    type: "string",
+    enum: ["low", "medium", "high", "max"],
+    description: "Optional reasoning effort level."
+  },
+  maxBudgetUsd: {
+    type: "number",
+    description: "Optional budget cap in USD for the run."
+  },
+  fallbackModel: {
+    type: "string",
+    description: "Optional model to fall back to if the primary model fails."
+  },
+  allowedTools: {
+    oneOf: [
+      { type: "string" },
+      { type: "array", items: { type: "string" } }
+    ],
+    description: "Optional tool allowlist passed through to FreeClaude."
+  },
+  disallowedTools: {
+    oneOf: [
+      { type: "string" },
+      { type: "array", items: { type: "string" } }
+    ],
+    description: "Optional tool denylist passed through to FreeClaude."
+  },
+  tools: {
+    oneOf: [
+      { type: "string" },
+      { type: "array", items: { type: "string" } }
+    ],
+    description: "Optional exact tool set exposed to FreeClaude."
+  },
+  systemPrompt: {
+    type: "string",
+    description: "Optional full system prompt override."
+  },
+  appendSystemPrompt: {
+    type: "string",
+    description: "Optional system prompt suffix appended to the default system prompt."
+  },
+  jsonSchema: {
+    oneOf: [
+      { type: "string" },
+      { type: "object" }
+    ],
+    description: "Optional JSON schema response contract. Accepts a JSON string or object."
+  },
+  noPersist: {
+    type: "boolean",
+    description: "Disable FreeClaude session persistence for this run."
+  },
+  addDirs: {
+    type: "array",
+    items: { type: "string" },
+    description: "Additional directories FreeClaude may access beyond workdir."
+  },
   sessionKey: {
     type: "string",
     description: "Stable OpenClaw session key used to bind this task to a resumable FreeClaude session."
@@ -217,6 +292,20 @@ function readOptionalFile(filePath) {
   }
 }
 
+function resolveUserPath(input) {
+  const value = readString(input);
+  if (!value) {
+    return "";
+  }
+  if (value === "~") {
+    return homedir();
+  }
+  if (value.startsWith("~/")) {
+    return path.join(homedir(), value.slice(2));
+  }
+  return value;
+}
+
 function runFreeClaude({
   task,
   workdir,
@@ -224,6 +313,21 @@ function runFreeClaude({
   mode = "code",
   timeout,
   includeMemory = true,
+  permissionMode,
+  bareMode,
+  maxTurns,
+  effort,
+  maxBudgetUsd,
+  fallbackModel,
+  allowedTools,
+  disallowedTools,
+  tools,
+  systemPrompt,
+  appendSystemPrompt,
+  jsonSchema,
+  noPersist = false,
+  addDirs,
+  extraDirs,
   sessionKey,
   resume,
   resumeSessionId,
@@ -234,23 +338,56 @@ function runFreeClaude({
       typeof timeout === "number" && Number.isFinite(timeout)
         ? Math.max(10, Math.floor(timeout))
         : FC_TIMEOUT_SECONDS;
+    const resolvedWorkdir = resolveUserPath(workdir);
     const resolvedResumeSessionId = resolveResumeSessionId({
       stateDir: FC_STATE_DIR,
       sessionKey,
       resume,
       resumeSessionId,
     });
+    const resolvedPermissionMode = readString(permissionMode);
+    const resolvedBareMode =
+      typeof bareMode === "boolean" ? bareMode : undefined;
+    const resolvedMaxTurns = readPositiveInteger(maxTurns);
+    const effortCandidate = readString(effort).toLowerCase();
+    const resolvedEffort =
+      ["low", "medium", "high", "max"].includes(effortCandidate) ? effortCandidate : undefined;
+    const resolvedMaxBudgetUsd = readPositiveNumber(maxBudgetUsd);
+    const resolvedFallbackModel = readString(fallbackModel);
+    const resolvedAllowedTools = normalizeStringListOption(allowedTools);
+    const resolvedDisallowedTools = normalizeStringListOption(disallowedTools);
+    const resolvedTools = normalizeStringListOption(tools);
+    const resolvedSystemPrompt = readString(systemPrompt);
+    const resolvedAppendSystemPrompt = readString(appendSystemPrompt);
+    const resolvedJsonSchema = normalizeJsonSchemaOption(jsonSchema);
+    const resolvedExtraDirs = normalizeAdditionalDirs(addDirs || extraDirs, resolveUserPath).filter(
+      (dir) => dir !== resolvedWorkdir,
+    );
 
     runWrappedSync({
       wrapper: FC_WRAPPER,
       binary: FC_BINARY,
       stateDir: FC_STATE_DIR,
-      workdir,
+      workdir: resolvedWorkdir,
       task,
       mode,
       model,
       timeoutSeconds: resolvedTimeout,
       includeMemory,
+      permissionMode: resolvedPermissionMode,
+      bareMode: resolvedBareMode,
+      maxTurns: resolvedMaxTurns,
+      effort: resolvedEffort,
+      maxBudgetUsd: resolvedMaxBudgetUsd,
+      fallbackModel: resolvedFallbackModel,
+      allowedTools: resolvedAllowedTools,
+      disallowedTools: resolvedDisallowedTools,
+      tools: resolvedTools,
+      systemPrompt: resolvedSystemPrompt,
+      appendSystemPrompt: resolvedAppendSystemPrompt,
+      jsonSchema: resolvedJsonSchema,
+      noPersist: noPersist === true,
+      extraDirs: resolvedExtraDirs,
       sessionKey,
       resumeSessionId: resolvedResumeSessionId,
       forkSession,
@@ -337,6 +474,20 @@ async function handleRequest(msg) {
           model: args.model,
           timeout: args.timeout,
           includeMemory: args.includeMemory !== false,
+          permissionMode: args.permissionMode,
+          bareMode: args.bareMode,
+          maxTurns: args.maxTurns,
+          effort: args.effort,
+          maxBudgetUsd: args.maxBudgetUsd,
+          fallbackModel: args.fallbackModel,
+          allowedTools: args.allowedTools,
+          disallowedTools: args.disallowedTools,
+          tools: args.tools,
+          systemPrompt: args.systemPrompt,
+          appendSystemPrompt: args.appendSystemPrompt,
+          jsonSchema: args.jsonSchema,
+          noPersist: args.noPersist === true,
+          addDirs: args.addDirs,
           sessionKey: args.sessionKey,
           resume: args.resume,
           resumeSessionId: args.resumeSessionId,

@@ -6,6 +6,70 @@ export function readString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+export function readPositiveInteger(value) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+export function readPositiveNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseFloat(value.trim());
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+export function normalizeStringListOption(value) {
+  if (Array.isArray(value)) {
+    const parts = value.map(readString).filter(Boolean);
+    return parts.length ? parts.join(" ") : "";
+  }
+  return readString(value);
+}
+
+export function normalizeJsonSchemaOption(value) {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (value && typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+export function normalizeAdditionalDirs(value, resolvePath = (input) => input) {
+  const items = Array.isArray(value) ? value : [value];
+  const seen = new Set();
+  const dirs = [];
+  for (const item of items) {
+    const dir = readString(item);
+    if (!dir) continue;
+    const resolved = resolvePath(dir);
+    if (!seen.has(resolved)) {
+      seen.add(resolved);
+      dirs.push(resolved);
+    }
+  }
+  return dirs;
+}
+
 export function buildTask(mode, task) {
   const prefixMap = {
     code: "",
@@ -108,6 +172,20 @@ export async function runWrappedSync({
   sessionKey,
   resumeSessionId,
   forkSession = false,
+  permissionMode,
+  bareMode,
+  maxTurns,
+  effort,
+  maxBudgetUsd,
+  fallbackModel,
+  allowedTools,
+  disallowedTools,
+  tools,
+  systemPrompt,
+  appendSystemPrompt,
+  jsonSchema,
+  noPersist = false,
+  extraDirs = [],
   persistBinding = true,
   lastRunId,
   cwd,
@@ -123,11 +201,58 @@ export async function runWrappedSync({
   if (model) {
     args.push("--model", model);
   }
+  if (includeMemory === false) {
+    args.push("--no-memory");
+  }
   if (resumeSessionId) {
     args.push("--resume", resumeSessionId);
   }
   if (forkSession === true) {
     args.push("--fork-session");
+  }
+  if (permissionMode) {
+    args.push("--permission-mode", permissionMode);
+  }
+  if (bareMode === true) {
+    args.push("--bare");
+  } else if (bareMode === false) {
+    args.push("--no-bare");
+  }
+  if (maxTurns) {
+    args.push("--max-turns", String(maxTurns));
+  }
+  if (effort) {
+    args.push("--effort", effort);
+  }
+  if (maxBudgetUsd) {
+    args.push("--max-budget-usd", String(maxBudgetUsd));
+  }
+  if (fallbackModel) {
+    args.push("--fallback-model", fallbackModel);
+  }
+  if (allowedTools) {
+    args.push("--allowed-tools", allowedTools);
+  }
+  if (disallowedTools) {
+    args.push("--disallowed-tools", disallowedTools);
+  }
+  if (tools) {
+    args.push("--tools", tools);
+  }
+  if (systemPrompt) {
+    args.push("--system-prompt", systemPrompt);
+  }
+  if (appendSystemPrompt) {
+    args.push("--append-system-prompt", appendSystemPrompt);
+  }
+  if (jsonSchema) {
+    args.push("--json-schema", jsonSchema);
+  }
+  if (noPersist === true) {
+    args.push("--no-persist");
+  }
+  for (const extraDir of extraDirs) {
+    args.push("--add-dir", extraDir);
   }
   args.push(buildTask(mode, task));
 
