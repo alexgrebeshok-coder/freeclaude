@@ -46,6 +46,26 @@ interface ProviderRuntime extends ProviderConfig {
   markedDownAt: number | null
 }
 
+type EnvProviderSpec = {
+  name: string
+  envKey: string
+  modelEnvKey?: string
+  baseUrl: string
+  defaultModel: string
+  timeout: number
+}
+
+const ENV_PROVIDER_SPECS: EnvProviderSpec[] = [
+  {
+    name: 'openrouter',
+    envKey: 'OPENROUTER_API_KEY',
+    modelEnvKey: 'OPENROUTER_MODEL',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    defaultModel: 'qwen/qwen3-coder-next',
+    timeout: 120000,
+  },
+]
+
 // ---------------------------------------------------------------------------
 // Config file path
 // ---------------------------------------------------------------------------
@@ -110,6 +130,26 @@ export function resolveApiKey(value: string): string {
   return value
 }
 
+function isLocalProvider(baseUrl: string): boolean {
+  const normalized = baseUrl.trim().toLowerCase()
+  return normalized.startsWith('http://localhost') ||
+    normalized.startsWith('http://127.0.0.1') ||
+    normalized.startsWith('http://[::1]') ||
+    normalized.startsWith('https://localhost') ||
+    normalized.startsWith('https://127.0.0.1') ||
+    normalized.startsWith('https://[::1]')
+}
+
+function createRuntimeProvider(
+  config: ProviderConfig,
+): ProviderRuntime {
+  return {
+    ...config,
+    errorStreak: 0,
+    markedDownAt: null,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // FallbackChain
 // ---------------------------------------------------------------------------
@@ -161,15 +201,13 @@ export class FallbackChain {
 
         if (Array.isArray(config.providers)) {
           this.providers = getOrderedConfiguredProviders(config)
-            .map(p => ({
+            .map(p => createRuntimeProvider({
               name: p.name,
               baseUrl: p.baseUrl,
               apiKey: resolveApiKey(p.apiKey),
               model: p.model,
               priority: p.priority ?? 999,
               timeout: p.timeout ?? 30000,
-              errorStreak: 0,
-              markedDownAt: null,
             }))
 
           this.enabled = true
@@ -199,6 +237,8 @@ export class FallbackChain {
     if (this.providers.length === 0) {
       this.loadFromEnv()
     }
+
+    this.appendEnvProviders()
   }
 
   private loadFromEnv(): void {
@@ -208,18 +248,57 @@ export class FallbackChain {
 
     if (apiKey) {
       this.providers = [
-        {
+        createRuntimeProvider({
           name: 'env-default',
           baseUrl,
           apiKey,
           model,
           priority: 1,
           timeout: 30000,
-          errorStreak: 0,
-          markedDownAt: null,
-        },
+        }),
       ]
       this.log('info', 'No config file, using env vars as single provider')
+    }
+  }
+
+  private appendEnvProviders(): void {
+    const existingNames = new Set(
+      this.providers.map(provider => provider.name.toLowerCase()),
+    )
+    const firstLocalProviderIndex = this.providers.findIndex(provider =>
+      isLocalProvider(provider.baseUrl),
+    )
+    let insertIndex =
+      firstLocalProviderIndex >= 0 ? firstLocalProviderIndex : this.providers.length
+
+    for (const spec of ENV_PROVIDER_SPECS) {
+      if (existingNames.has(spec.name)) {
+        continue
+      }
+
+      const apiKey = process.env[spec.envKey]?.trim()
+      if (!apiKey) {
+        continue
+      }
+
+      const model =
+        process.env[spec.modelEnvKey ?? '']?.trim() ||
+        spec.defaultModel
+
+      const provider = createRuntimeProvider({
+        name: spec.name,
+        baseUrl: spec.baseUrl,
+        apiKey,
+        model,
+        priority: insertIndex + 1,
+        timeout: spec.timeout,
+      })
+
+      this.providers.splice(insertIndex, 0, provider)
+      existingNames.add(spec.name)
+      insertIndex += 1
+      this.enabled = true
+      this.log('info', `Appended ${spec.name} provider from ${spec.envKey}`)
     }
   }
 

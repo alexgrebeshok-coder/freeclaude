@@ -3,6 +3,7 @@
 # Usage:
 #   freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS]
 #                    [--resume SESSION_ID] [--fork-session]
+#                    [--permission-mode MODE] [--no-memory]
 #                    [--output-format text|json|stream-json] "prompt"
 #
 # Modes:
@@ -27,6 +28,7 @@ MEMORY_BRIDGE_ENABLED=0
 MEMORY_CONTEXT_INJECTED=0
 RESUME_SESSION_ID=""
 FORK_SESSION=0
+PERMISSION_MODE="${PERMISSION_MODE:-bypassPermissions}"
 
 emit_wrapper_event() {
   local event_name="$1"
@@ -37,6 +39,7 @@ emit_wrapper_event() {
   WRAPPER_MODEL_HINT="$MODEL" \
   WRAPPER_MEMORY_ENABLED="$MEMORY_BRIDGE_ENABLED" \
   WRAPPER_MEMORY_INJECTED="$MEMORY_CONTEXT_INJECTED" \
+  WRAPPER_PERMISSION_MODE="$PERMISSION_MODE" \
   python3 - <<'PY'
 import json
 import os
@@ -50,6 +53,7 @@ payload = {
     "modelHint": os.environ.get("WRAPPER_MODEL_HINT") or None,
     "memoryBridgeEnabled": os.environ.get("WRAPPER_MEMORY_ENABLED") == "1",
     "memoryContextInjected": os.environ.get("WRAPPER_MEMORY_INJECTED") == "1",
+    "permissionMode": os.environ.get("WRAPPER_PERMISSION_MODE") or "bypassPermissions",
 }
 print(json.dumps(payload, ensure_ascii=False), flush=True)
 PY
@@ -69,6 +73,7 @@ build_result_envelope() {
   WRAPPER_EXIT_CODE="$EXIT_CODE" \
   WRAPPER_MEMORY_ENABLED="$MEMORY_BRIDGE_ENABLED" \
   WRAPPER_MEMORY_INJECTED="$MEMORY_CONTEXT_INJECTED" \
+  WRAPPER_PERMISSION_MODE="$PERMISSION_MODE" \
   python3 - "$stdout_file" "$stderr_file" <<'PY'
 import json
 import os
@@ -87,6 +92,7 @@ model_hint = os.environ.get("WRAPPER_MODEL_HINT") or None
 provider_stats = os.environ.get("WRAPPER_PROVIDER_STATS") or None
 memory_bridge_enabled = os.environ.get("WRAPPER_MEMORY_ENABLED") == "1"
 memory_context_injected = os.environ.get("WRAPPER_MEMORY_INJECTED") == "1"
+permission_mode = os.environ.get("WRAPPER_PERMISSION_MODE") or "bypassPermissions"
 
 filtered_errors = "\n".join(
     line for line in stderr_text.splitlines() if line.strip() and not line.startswith("[FreeClaude]")
@@ -99,6 +105,48 @@ cost_usd = None
 usage = None
 resolved_model = model_hint
 stop_reason = None
+actual_model = None
+provider_name = None
+provider_fallback = False
+
+if provider_stats:
+    parts = [part.strip() for part in provider_stats.split("|")]
+    if len(parts) >= 2 and parts[1]:
+        provider_segment = parts[1]
+        if "/" in provider_segment:
+            provider_name, provider_model = provider_segment.split("/", 1)
+            if provider_model and not actual_model:
+                actual_model = provider_model
+        else:
+            provider_name = provider_segment
+    provider_fallback = "(fallback)" in provider_stats
+
+for line in stdout_text.splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        parsed_line = json.loads(line)
+    except Exception:
+        continue
+    if not isinstance(parsed_line, dict):
+        continue
+    if parsed_line.get("type") == "stream_event":
+        event = parsed_line.get("event")
+        if isinstance(event, dict) and event.get("type") == "message_start":
+            message = event.get("message")
+            if isinstance(message, dict):
+                model_value = message.get("model")
+                if isinstance(model_value, str) and model_value.strip():
+                    actual_model = model_value.strip()
+                    break
+    elif parsed_line.get("type") == "assistant":
+        message = parsed_line.get("message")
+        if isinstance(message, dict):
+            model_value = message.get("model")
+            if isinstance(model_value, str) and model_value.strip():
+                actual_model = model_value.strip()
+                break
 
 if stdout_text:
     try:
@@ -154,7 +202,8 @@ envelope = {
     "output": output,
     "error": error_text,
     "workdir": workdir,
-    "model": resolved_model,
+    "model": actual_model or resolved_model,
+    "requestedModel": resolved_model,
     "durationMs": duration_ms,
     "timeoutSec": timeout_sec,
     "sessionId": session_id,
@@ -162,8 +211,12 @@ envelope = {
     "usage": usage,
     "stopReason": stop_reason,
     "providerStats": provider_stats,
+    "provider": provider_name,
+    "providerFallback": provider_fallback,
+    "actualModel": actual_model,
     "memoryBridgeEnabled": memory_bridge_enabled,
     "memoryContextInjected": memory_context_injected,
+    "permissionMode": permission_mode,
     "filesTouched": [],
     "commandsRun": [],
     "exitCode": exit_code,
@@ -202,7 +255,7 @@ data = json.loads(os.environ["ENVELOPE_JSON"])
 summary = (data.get("summary") or "").strip()
 status = (data.get("status") or "").strip()
 task = textwrap.shorten((os.environ.get("USER_PROMPT") or "").strip(), width=140, placeholder="...")
-model = (data.get("model") or "").strip()
+model = (data.get("actualModel") or data.get("model") or "").strip()
 session_id = (data.get("sessionId") or "").strip()
 duration_ms = data.get("durationMs") or 0
 
@@ -321,6 +374,14 @@ while [[ $# -gt 0 ]]; do
       OUTPUT_FORMAT="$2"
       shift 2
       ;;
+    --permission-mode)
+      PERMISSION_MODE="$2"
+      shift 2
+      ;;
+    --no-memory)
+      FC_MEMORY_BRIDGE=0
+      shift
+      ;;
     --)
       shift
       PROMPT="$*"
@@ -335,7 +396,7 @@ done
 
 if [[ -z "$PROMPT" ]]; then
   echo "Error: No prompt provided"
-  echo "Usage: freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS] [--resume SESSION_ID] [--fork-session] [--output-format text|json|stream-json] \"prompt\""
+  echo "Usage: freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS] [--resume SESSION_ID] [--fork-session] [--permission-mode MODE] [--no-memory] [--output-format text|json|stream-json] \"prompt\""
   exit 1
 fi
 
@@ -347,6 +408,11 @@ case "$OUTPUT_FORMAT" in
     exit 1
     ;;
 esac
+
+if [[ -z "$PERMISSION_MODE" ]]; then
+  echo "Error: Permission mode must not be empty"
+  exit 1
+fi
 
 USER_PROMPT="$PROMPT"
 
@@ -389,7 +455,7 @@ $USER_PROMPT"
   fi
 fi
 
-CMD_BASE=("$FC_BINARY" "--print" "--bare")
+CMD_BASE=("$FC_BINARY" "--print" "--bare" "--permission-mode" "$PERMISSION_MODE")
 if [[ -n "$MODEL" ]]; then
   CMD_BASE+=("--model" "$MODEL")
 fi
@@ -408,7 +474,17 @@ COST_LINE=""
 
 if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
   emit_wrapper_event "init"
-  STREAM_CMD=("$FC_BINARY" "--print" "--bare" "--verbose" "--output-format" "stream-json" "--include-partial-messages")
+  STREAM_CMD=(
+    "$FC_BINARY"
+    "--print"
+    "--bare"
+    "--permission-mode"
+    "$PERMISSION_MODE"
+    "--verbose"
+    "--output-format"
+    "stream-json"
+    "--include-partial-messages"
+  )
   if [[ -n "$MODEL" ]]; then
     STREAM_CMD+=("--model" "$MODEL")
   fi
@@ -423,7 +499,15 @@ if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
   set +e
   perl -e "
     alarm $TIMEOUT;
-    \$SIG{ALRM} = sub { kill 'TERM', \$pid; die 'timeout' };
+    \$SIG{ALRM} = sub {
+      if (defined \$pid) {
+        kill 'TERM', \$pid;
+        select undef, undef, undef, 0.25;
+        kill 'KILL', \$pid if kill 0, \$pid;
+      }
+      print STDERR qq(FreeClaude timed out after ${TIMEOUT}s\n);
+      exit 124;
+    };
     \$pid = fork;
     if (\$pid == 0) {
       exec @ARGV;
@@ -454,7 +538,7 @@ if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
 fi
 
 if [[ "$OUTPUT_FORMAT" == "json" ]]; then
-  JSON_CMD=("$FC_BINARY" "--print" "--bare" "--output-format" "json")
+  JSON_CMD=("$FC_BINARY" "--print" "--bare" "--permission-mode" "$PERMISSION_MODE" "--output-format" "json")
   if [[ -n "$MODEL" ]]; then
     JSON_CMD+=("--model" "$MODEL")
   fi
@@ -469,7 +553,15 @@ if [[ "$OUTPUT_FORMAT" == "json" ]]; then
   set +e
   perl -e "
     alarm $TIMEOUT;
-    \$SIG{ALRM} = sub { kill 'TERM', \$pid; die 'timeout' };
+    \$SIG{ALRM} = sub {
+      if (defined \$pid) {
+        kill 'TERM', \$pid;
+        select undef, undef, undef, 0.25;
+        kill 'KILL', \$pid if kill 0, \$pid;
+      }
+      print STDERR qq(FreeClaude timed out after ${TIMEOUT}s\n);
+      exit 124;
+    };
     \$pid = fork;
     if (\$pid == 0) {
       exec @ARGV;
@@ -502,7 +594,15 @@ fi
 set +e
 perl -e "
   alarm $TIMEOUT;
-  \$SIG{ALRM} = sub { kill 'TERM', \$pid; die 'timeout' };
+  \$SIG{ALRM} = sub {
+    if (defined \$pid) {
+      kill 'TERM', \$pid;
+      select undef, undef, undef, 0.25;
+      kill 'KILL', \$pid if kill 0, \$pid;
+    }
+    print STDERR qq(FreeClaude timed out after ${TIMEOUT}s\n);
+    exit 124;
+  };
   \$pid = fork;
   if (\$pid == 0) {
     exec @ARGV;

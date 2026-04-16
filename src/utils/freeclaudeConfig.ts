@@ -156,6 +156,11 @@ function cloneProvider(
   return { ...provider }
 }
 
+export type ParsedProviderQualifiedModel = {
+  providerName?: string
+  model: string
+}
+
 export function getFreeClaudeConfigPath(): string {
   return process.env.FREECLAUDE_CONFIG_PATH || join(homedir(), '.freeclaude.json')
 }
@@ -231,6 +236,46 @@ export function resolveConfiguredProviderModel(
   }
 
   return trimmedModel
+}
+
+export function parseProviderQualifiedModel(
+  model: string | undefined,
+  providers?: Array<{
+    name?: string
+    baseUrl?: string
+  }>,
+): ParsedProviderQualifiedModel | undefined {
+  const trimmedModel = model?.trim()
+  if (!trimmedModel) {
+    return undefined
+  }
+
+  const slashIndex = trimmedModel.indexOf('/')
+  if (slashIndex <= 0) {
+    return { model: trimmedModel }
+  }
+
+  const providerPart = normalizeName(trimmedModel.slice(0, slashIndex))
+  const modelPart = trimmedModel.slice(slashIndex + 1).trim()
+  if (!providerPart || !modelPart) {
+    return { model: trimmedModel }
+  }
+
+  const providerMatch =
+    providers?.find(provider => normalizeName(provider.name) === providerPart) ??
+    findKnownProviderDefinition({ name: providerPart })
+
+  if (!providerMatch) {
+    return { model: trimmedModel }
+  }
+
+  const providerName =
+    'slug' in providerMatch ? providerMatch.slug : providerMatch.name
+
+  return {
+    providerName: normalizeName(providerName),
+    model: modelPart,
+  }
 }
 
 export function normalizeFreeClaudeConfig(config: FreeClaudeConfig): {

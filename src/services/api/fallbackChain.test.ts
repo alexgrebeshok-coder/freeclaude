@@ -9,6 +9,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 const ORIGINAL_FREECLAUDE_CONFIG_PATH = process.env.FREECLAUDE_CONFIG_PATH
+const ORIGINAL_OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+const ORIGINAL_OPENROUTER_MODEL = process.env.OPENROUTER_MODEL
 let testConfigDir = ''
 let testConfigPath = ''
 
@@ -16,6 +18,8 @@ beforeEach(() => {
   testConfigDir = mkdtempSync(join(tmpdir(), 'freeclaude-fallback-'))
   testConfigPath = join(testConfigDir, 'config.json')
   process.env.FREECLAUDE_CONFIG_PATH = testConfigPath
+  delete process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_MODEL
 
   // Ensure a test config exists so FallbackChain always has providers
   writeFileSync(testConfigPath, JSON.stringify({
@@ -33,6 +37,18 @@ afterEach(() => {
     delete process.env.FREECLAUDE_CONFIG_PATH
   } else {
     process.env.FREECLAUDE_CONFIG_PATH = ORIGINAL_FREECLAUDE_CONFIG_PATH
+  }
+
+  if (ORIGINAL_OPENROUTER_API_KEY === undefined) {
+    delete process.env.OPENROUTER_API_KEY
+  } else {
+    process.env.OPENROUTER_API_KEY = ORIGINAL_OPENROUTER_API_KEY
+  }
+
+  if (ORIGINAL_OPENROUTER_MODEL === undefined) {
+    delete process.env.OPENROUTER_MODEL
+  } else {
+    process.env.OPENROUTER_MODEL = ORIGINAL_OPENROUTER_MODEL
   }
 })
 
@@ -116,6 +132,42 @@ describe('FallbackChain', () => {
     expect(resolveApiKey('literal-key')).toBe('literal-key')
 
     delete process.env.MY_TEST_KEY
+  })
+
+  test('appends env-backed OpenRouter before local providers', () => {
+    writeFileSync(testConfigPath, JSON.stringify({
+      providers: [
+        { name: 'zai', baseUrl: 'https://api.z.ai/api/coding/paas/v4', apiKey: 'test-key', model: 'glm-4.7-flash', priority: 1 },
+        { name: 'ollama', baseUrl: 'http://localhost:11434/v1', apiKey: 'ollama', model: 'qwen2.5:3b', priority: 2 },
+      ],
+    }))
+    process.env.OPENROUTER_API_KEY = 'env-openrouter-key'
+    delete process.env.OPENROUTER_MODEL
+
+    const chain = new FallbackChain()
+    const providers = chain.getProviders()
+
+    expect(providers.map(provider => provider.name)).toEqual([
+      'zai',
+      'openrouter',
+      'ollama',
+    ])
+    expect(providers[1]?.model).toBe('qwen/qwen3-coder-next')
+  })
+
+  test('uses OPENROUTER_MODEL when appending env-backed OpenRouter', () => {
+    writeFileSync(testConfigPath, JSON.stringify({
+      providers: [
+        { name: 'zai', baseUrl: 'https://api.z.ai/api/coding/paas/v4', apiKey: 'test-key', model: 'glm-4.7-flash', priority: 1 },
+      ],
+    }))
+    process.env.OPENROUTER_API_KEY = 'env-openrouter-key'
+    process.env.OPENROUTER_MODEL = 'deepseek/deepseek-chat'
+
+    const chain = new FallbackChain()
+    const openrouter = chain.getProviders().find(provider => provider.name === 'openrouter')
+
+    expect(openrouter?.model).toBe('deepseek/deepseek-chat')
   })
 
   test('getStats returns initial state', () => {

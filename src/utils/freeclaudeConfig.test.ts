@@ -3,6 +3,7 @@ import {
   getFreeClaudeConfigPath,
   getOrderedConfiguredProviders,
   normalizeFreeClaudeConfig,
+  parseProviderQualifiedModel,
   resolveConfiguredProviderModel,
 } from './freeclaudeConfig.ts'
 
@@ -110,5 +111,25 @@ describe('freeclaudeConfig', () => {
 
     expect(normalized.changed).toBe(false)
     expect(normalized.config.providers?.[0]?.model).toBe('2')
+  })
+
+  test('parseProviderQualifiedModel strips configured provider prefix', () => {
+    expect(
+      parseProviderQualifiedModel('zai/glm-4.7-flash', [
+        {
+          name: 'zai',
+          baseUrl: 'https://api.z.ai/api/coding/paas/v4',
+        },
+      ]),
+    ).toEqual({
+      providerName: 'zai',
+      model: 'glm-4.7-flash',
+    })
+  })
+
+  test('parseProviderQualifiedModel preserves router-style model ids when provider is not configured', () => {
+    expect(parseProviderQualifiedModel('anthropic/claude-sonnet-4')).toEqual({
+      model: 'anthropic/claude-sonnet-4',
+    })
   })
 })

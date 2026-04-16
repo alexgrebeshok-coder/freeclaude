@@ -44,6 +44,8 @@ import { logUsage } from '../usage/usageStore.js'
 import { estimateTokens, parseApiUsage } from '../usage/tokenCounter.js'
 import { calculateCost, calculateCostFromUsage } from '../usage/costCalculator.js'
 import { enrichContext } from '../memory/contextEnricher.js'
+import { getMainLoopModelOverride } from '../../bootstrap/state.js'
+import { parseProviderQualifiedModel } from '../../utils/freeclaudeConfig.js'
 
 // ---------------------------------------------------------------------------
 // Types — minimal subset of Anthropic SDK types we need to produce
@@ -728,7 +730,28 @@ class OpenAIShimMessages {
           params = { ...params, messages: msgs }
         }
       }
-      let currentProvider = chain.getCurrent()
+      const mainLoopModelOverride = getMainLoopModelOverride()
+      const requestedModelSelection = parseProviderQualifiedModel(
+        mainLoopModelOverride ?? undefined,
+        chain.getProviders(),
+      )
+      const explicitProviderName = requestedModelSelection?.providerName
+      const explicitModel = requestedModelSelection?.model?.trim() || undefined
+      const hasExplicitModel = Boolean(mainLoopModelOverride && explicitModel)
+      const pinnedProvider =
+        explicitProviderName
+          ? chain.getProviders().find(
+              provider => provider.name.toLowerCase() === explicitProviderName,
+            )
+          : undefined
+
+      if (explicitProviderName && !pinnedProvider) {
+        throw new Error(
+          `[FreeClaude] Provider "${explicitProviderName}" is not configured for model ${params.model}`,
+        )
+      }
+
+      let currentProvider = pinnedProvider ?? chain.getCurrent()
 
       // FreeClaude: if /model changed env vars, reload chain to pick up activeProvider
       const envBase = process.env.OPENAI_BASE_URL
@@ -736,11 +759,16 @@ class OpenAIShimMessages {
       if (envBase && envModel && currentProvider &&
           (currentProvider.baseUrl !== envBase || currentProvider.model !== envModel)) {
         chain.loadProviders()
-        currentProvider = chain.getCurrent()
+        currentProvider =
+          explicitProviderName
+            ? chain.getProviders().find(
+                provider => provider.name.toLowerCase() === explicitProviderName,
+              ) ?? null
+            : chain.getCurrent()
       }
 
       let lastError: Error | null = null
-      const maxAttempts = chain.getProviders().length
+      const maxAttempts = hasExplicitModel ? 1 : chain.getProviders().length
       let startTime = 0
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -753,13 +781,12 @@ class OpenAIShimMessages {
 
         process.env.OPENAI_API_KEY = currentProvider.apiKey
         process.env.OPENAI_BASE_URL = currentProvider.baseUrl
-        process.env.OPENAI_MODEL = currentProvider.model
+        process.env.OPENAI_MODEL = explicitModel || currentProvider.model
 
         try {
           const startTime = Date.now()
-          // Override model in params so resolveProviderRequest picks it up
           const result = await self._createSingle(
-            { ...params, model: currentProvider.model },
+            { ...params, model: explicitModel || currentProvider.model },
             options,
           )
           const durationMs = Date.now() - startTime
@@ -799,7 +826,7 @@ class OpenAIShimMessages {
           logUsage({
             timestamp: new Date().toISOString(),
             provider: currentProvider.name,
-            model: currentProvider.model,
+            model: explicitModel || currentProvider.model,
             promptTokens,
             completionTokens,
             totalTokens: promptTokens + completionTokens,
@@ -808,8 +835,9 @@ class OpenAIShimMessages {
             fallback: attempt > 0,
           })
 
+          const providerDescriptor = `${currentProvider.name}/${explicitModel || currentProvider.model}`
           console.error(
-            `[FreeClaude] ${promptTokens + completionTokens} tokens (prompt: ${promptTokens}, completion: ${completionTokens}) | ${currentProvider.name} | $${costUsd.toFixed(4)}${attempt > 0 ? ' (fallback)' : ''} | ${durationMs}ms`,
+            `[FreeClaude] ${promptTokens + completionTokens} tokens (prompt: ${promptTokens}, completion: ${completionTokens}) | ${providerDescriptor} | $${costUsd.toFixed(4)}${attempt > 0 ? ' (fallback)' : ''} | ${durationMs}ms`,
           )
 
           // Record latency for health tracking
@@ -853,6 +881,12 @@ class OpenAIShimMessages {
             const reason = statusCode > 0
               ? `HTTP ${statusCode}`
               : (error as Error).message?.slice(0, 60)
+            if (hasExplicitModel) {
+              console.error(
+                `[FreeClaude] ${currentProvider.name} failed (${reason}), not switching providers because --model is pinned`,
+              )
+              throw error
+            }
             console.error(
               `[FreeClaude] ${currentProvider.name} failed (${reason}), switching...`,
             )
