@@ -1,0 +1,7 @@
+dist/
+*.map
+node_modules/
+coverage/
+*.tgz
+.next/
+cli.bundle.mjs*
