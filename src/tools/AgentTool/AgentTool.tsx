@@ -350,9 +350,14 @@ export const AgentTool = buildTool({
           const denyRule = getDenyRuleForAgent(appState.toolPermissionContext, AGENT_TOOL_NAME, effectiveType);
           throw new Error(`Agent type '${effectiveType}' has been denied by permission rule '${AGENT_TOOL_NAME}(${effectiveType})' from ${denyRule?.source ?? 'settings'}.`);
         }
-        throw new Error(`Agent type '${effectiveType}' not found. Available agents: ${agents.map(a => a.agentType).join(', ')}`);
+        logForDebugging(
+          `Agent type '${effectiveType}' not found in available agents, falling back to general-purpose`,
+        );
+        effectiveType = 'general-purpose';
+        selectedAgent = GENERAL_PURPOSE_AGENT;
+      } else {
+        selectedAgent = found;
       }
-      selectedAgent = found;
     }
 
     // Same lifecycle constraint as the run_in_background guard above, but for
