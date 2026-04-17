@@ -1121,7 +1121,23 @@ export function checkReadPermissionForTool(
     }
   }
 
-  // 5. Edit access implies read access (but only if no read-specific deny/ask rules exist)
+  // 5. acceptEdits/bypassPermissions should silently allow reads after explicit
+  // read-specific deny/ask rules have been honored.
+  if (
+    toolPermissionContext.mode === 'acceptEdits' ||
+    toolPermissionContext.mode === 'bypassPermissions'
+  ) {
+    return {
+      behavior: 'allow',
+      updatedInput: input,
+      decisionReason: {
+        type: 'mode',
+        mode: toolPermissionContext.mode,
+      },
+    }
+  }
+
+  // 6. Edit access implies read access (but only if no read-specific deny/ask rules exist)
   // We check this after read-specific rules so that explicit read restrictions take precedence
   const editResult = checkWritePermissionForTool(
     tool,
@@ -1133,7 +1149,7 @@ export function checkReadPermissionForTool(
     return editResult
   }
 
-  // 6. Allow reads in working directories
+  // 7. Allow reads in working directories
   const isInWorkingDir = pathInAllowedWorkingPath(
     path,
     toolPermissionContext,
@@ -1150,14 +1166,14 @@ export function checkReadPermissionForTool(
     }
   }
 
-  // 7. Allow reads from internal harness paths (session-memory, plans, tool-results)
+  // 8. Allow reads from internal harness paths (session-memory, plans, tool-results)
   const absolutePath = expandPath(path)
   const internalReadResult = checkReadableInternalPath(absolutePath, input)
   if (internalReadResult.behavior !== 'passthrough') {
     return internalReadResult
   }
 
-  // 8. Check for allow rules
+  // 9. Check for allow rules
   const allowRule = matchingRuleForInput(
     path,
     toolPermissionContext,
