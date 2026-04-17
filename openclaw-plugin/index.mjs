@@ -19,9 +19,10 @@ import {
   readString,
   readPositiveInteger,
   readPositiveNumber,
-  runWrappedSync,
+  runSync,
   WrappedRunError,
 } from "./freeclaude-backend.mjs";
+import { attachDelegationResult, buildDelegationResult } from "./delegation-schema.mjs";
 import {
   DEFAULT_LIST_LIMIT,
   formatRunSummaryList,
@@ -29,6 +30,11 @@ import {
   listRunSummaries,
   listSessionSummaries,
 } from "./inspection.mjs";
+import {
+  buildDirectEnvelope,
+  createDirectSpawnSpec,
+  DIRECT_SIGTERM_GRACE_MS,
+} from "./freeclaude-direct.mjs";
 
 const RUNS = new Map();
 const SESSIONS = new Map();
@@ -41,6 +47,7 @@ function resolveRuntimeConfig(api) {
   const cfg = api.pluginConfig ?? {};
   const wrapper = api.resolvePath(cfg.wrapper || "~/.openclaw/workspace/tools/freeclaude-run.sh");
   const binary = typeof cfg.binary === "string" && cfg.binary.trim() ? cfg.binary.trim() : "freeclaude";
+  const executionModeCandidate = readString(cfg.executionMode || process.env.FREECLAUDE_EXECUTION_MODE).toLowerCase();
   const defaultModel =
     typeof cfg.defaultModel === "string" && cfg.defaultModel.trim() ? cfg.defaultModel.trim() : "";
   const timeout =
@@ -48,8 +55,9 @@ function resolveRuntimeConfig(api) {
   const resolvedStateDir = api.resolvePath(
     typeof cfg.stateDir === "string" && cfg.stateDir.trim() ? cfg.stateDir.trim() : DEFAULT_STATE_DIR,
   );
+  const executionMode = executionModeCandidate === "wrapper" ? "wrapper" : "direct";
 
-  return { wrapper, binary, defaultModel, timeout, stateDir: resolvedStateDir };
+  return { wrapper, binary, defaultModel, timeout, stateDir: resolvedStateDir, executionMode };
 }
 
 function firstNonEmptyLine(text) {
@@ -274,7 +282,26 @@ function updateSessionBinding(api, run, envelope = run.result) {
 }
 
 function applyWrapperResult(api, run, payload) {
-  run.result = { ...payload, runId: run.runId, sessionKey: run.sessionKey || undefined };
+  run.result = attachDelegationResult(
+    { ...payload, runId: run.runId, sessionKey: run.sessionKey || undefined },
+    {
+      runId: run.runId,
+      parentRunId: run.parentRunId,
+      sessionKey: run.sessionKey || undefined,
+      sessionId: run.freeClaudeSessionId,
+      status: run.status,
+      mode: run.mode,
+      task: run.task,
+      summary: run.summary,
+      partialOutput: run.partialOutput,
+      error: run.error,
+      workdir: run.workdir,
+      model: run.model,
+      startedAt: run.startedAt,
+      updatedAt: Date.now(),
+      finishedAt: Date.now(),
+    },
+  );
   run.summary = payload.summary || run.summary;
   run.partialOutput = trimPreview(payload.output || run.partialOutput);
   run.status = payload.status === "success" ? "completed" : "failed";
@@ -356,7 +383,7 @@ function normalizeInput(api, input = {}, context = {}) {
   const forkSession = sourceInput.forkSession === true;
   const parentRunId = readString(sourceInput.parentRunId || sourceInput.retryRunId);
 
-  if (!fs.existsSync(runtime.wrapper)) {
+  if (runtime.executionMode === "wrapper" && !fs.existsSync(runtime.wrapper)) {
     throw new Error(`wrapper not found: ${runtime.wrapper}`);
   }
   if (!fs.existsSync(workdir)) {
@@ -475,6 +502,31 @@ function toDisplayText(result) {
 }
 
 function summarizeRun(run) {
+  const delegation = buildDelegationResult({
+    runId: run.runId,
+    parentRunId: run.parentRunId,
+    sessionKey: run.sessionKey || undefined,
+    sessionId: run.freeClaudeSessionId || run.result?.sessionId || undefined,
+    status: run.status,
+    mode: run.mode,
+    task: run.task,
+    summary: run.summary,
+    output: run.result?.output,
+    partialOutput: run.partialOutput,
+    error: run.error,
+    workdir: run.workdir,
+    requestedModel: run.result?.requestedModel || run.model,
+    actualModel: run.result?.actualModel || run.result?.model || run.model,
+    durationMs: run.result?.durationMs,
+    timeoutSec: run.result?.timeoutSec || run.timeout,
+    exitCode: run.exitCode,
+    costUsd: run.result?.costUsd,
+    usage: run.result?.usage,
+    stopReason: run.result?.stopReason,
+    startedAt: run.startedAt,
+    updatedAt: run.updatedAt,
+    finishedAt: run.finishedAt,
+  });
   return {
     runId: run.runId,
     status: run.status,
@@ -509,6 +561,7 @@ function summarizeRun(run) {
     error: run.error,
     hasResult: Boolean(run.result),
     exitCode: run.exitCode,
+    delegation,
   };
 }
 
@@ -575,7 +628,8 @@ function runFreeClaude(api, input = {}, context = {}) {
   const run = createRunRecord(normalized);
   persistRun(api, run);
 
-  return runWrappedSync({
+  return runSync({
+    executionMode: normalized.runtime.executionMode,
     wrapper: normalized.runtime.wrapper,
     binary: normalized.runtime.binary,
     stateDir: normalized.runtime.stateDir,
@@ -607,7 +661,7 @@ function runFreeClaude(api, input = {}, context = {}) {
   })
     .then((result) => {
       applyWrapperResult(api, run, result);
-      return { ...result, runId: run.runId, sessionKey: run.sessionKey || undefined };
+      return run.result;
     })
     .catch((err) => {
       if (err instanceof WrappedRunError && err.envelope) {
@@ -625,9 +679,149 @@ function runFreeClaude(api, input = {}, context = {}) {
 }
 
 function startFreeClaudeRun(api, input = {}, context = {}) {
-  const normalized = normalizeInput(api, { ...input, background: false }, context);
-  const args = createWrapperArgs(normalized, "stream-json");
+  const normalized = normalizeInput(api, { ...input, background: true }, context);
+  const run = createRunRecord(normalized);
+  persistRun(api, run);
 
+  if (normalized.runtime.executionMode === "direct") {
+    let spec;
+    try {
+      spec = createDirectSpawnSpec({
+        binary: normalized.runtime.binary,
+        workdir: normalized.workdir,
+        task: normalized.task,
+        mode: normalized.mode,
+        model: normalized.model,
+        includeMemory: normalized.includeMemory,
+        resumeSessionId: normalized.resumeSessionId,
+        forkSession: normalized.forkSession,
+        permissionMode: normalized.permissionMode,
+        bareMode: normalized.bareMode,
+        maxTurns: normalized.maxTurns,
+        effort: normalized.effort,
+        maxBudgetUsd: normalized.maxBudgetUsd,
+        fallbackModel: normalized.fallbackModel,
+        allowedTools: normalized.allowedTools,
+        disallowedTools: normalized.disallowedTools,
+        tools: normalized.tools,
+        systemPrompt: normalized.systemPrompt,
+        appendSystemPrompt: normalized.appendSystemPrompt,
+        jsonSchema: normalized.jsonSchema,
+        noPersist: normalized.noPersist,
+        extraDirs: normalized.extraDirs,
+        outputFormat: "stream-json",
+      });
+    } catch (err) {
+      run.status = "failed";
+      run.error = (err instanceof Error ? err.message : String(err)).trim();
+      run.finishedAt = Date.now();
+      run.updatedAt = run.finishedAt;
+      run.lastEvent = "spawn_error";
+      persistRun(api, run);
+      throw (err instanceof Error ? err : new Error(String(err)));
+    }
+
+    const proc = spawn(spec.command, spec.args, {
+      cwd: spec.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env },
+    });
+
+    run.proc = proc;
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let killTimer = null;
+
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      run.updatedAt = Date.now();
+      run.lastEvent = "timeout";
+      try {
+        proc.kill("SIGTERM");
+      } catch {}
+
+      killTimer = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {}
+      }, DIRECT_SIGTERM_GRACE_MS);
+    }, normalized.timeout * 1000);
+
+    proc.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    const rl = createInterface({ input: proc.stdout });
+    rl.on("line", (line) => {
+      const parsed = parseJsonLine(line);
+      if (parsed) {
+        applyStreamEvent(api, run, parsed);
+      }
+    });
+
+    proc.stderr.on("data", (chunk) => {
+      const chunkText = chunk.toString();
+      stderr += chunkText;
+      const text = chunkText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("[FreeClaude]"))
+        .join("\n");
+      if (!text) return;
+      run.updatedAt = Date.now();
+      run.error = text;
+    });
+
+    proc.on("close", (code) => {
+      clearTimeout(timeoutTimer);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
+      run.exitCode = code;
+      run.updatedAt = Date.now();
+
+      if (!run.result && run.status === "running") {
+        const envelope = buildDirectEnvelope({
+          exitCode: code,
+          stdout,
+          stderr,
+          timedOut,
+          model: normalized.model,
+          startTime: run.startedAt,
+          timeoutSeconds: normalized.timeout,
+          workdir: normalized.workdir,
+          memoryBridgeEnabled: spec.memoryBridgeEnabled,
+          memoryContextInjected: spec.memoryContextInjected,
+          permissionMode: normalized.permissionMode,
+          bareMode: normalized.bareMode,
+          maxTurns: normalized.maxTurns,
+        });
+        applyWrapperResult(api, run, envelope);
+      } else if (run.status === "cancelled" && !run.finishedAt) {
+        run.finishedAt = Date.now();
+        persistRun(api, run);
+      }
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timeoutTimer);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
+      run.status = "failed";
+      run.error = err.message;
+      run.finishedAt = Date.now();
+      run.updatedAt = run.finishedAt;
+      run.lastEvent = "spawn_error";
+      persistRun(api, run);
+    });
+
+    return summarizeRun(run);
+  }
+
+  const args = createWrapperArgs(normalized, "stream-json");
   const proc = spawn(normalized.runtime.wrapper, args, {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -639,9 +833,7 @@ function startFreeClaudeRun(api, input = {}, context = {}) {
     },
   });
 
-  const run = createRunRecord(normalized);
   run.proc = proc;
-  persistRun(api, run);
 
   const rl = createInterface({ input: proc.stdout });
   rl.on("line", (line) => {
@@ -712,6 +904,7 @@ function getStatus(api) {
       configPath: "",
       timeoutSeconds: runtime.timeout,
       stateDir: runtime.stateDir,
+      executionMode: runtime.executionMode,
       label: "FreeClaude plugin status",
     }),
     `defaultModel: ${runtime.defaultModel || "(config default)"}`,

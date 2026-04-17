@@ -53,6 +53,5 @@
     "src/services/tasks/protocol/types.ts",
     "src/services/tasks/protocol/taskProtocol.ts"
   ],
-  ],
   "exclude": ["node_modules", "dist"]
 }

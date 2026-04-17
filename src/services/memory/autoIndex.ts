@@ -42,14 +42,22 @@ function saveIndexState(state: IndexState): void {
 }
 
 /**
- * Collect all .md files from a directory (non-recursive).
+ * Collect all .md files from a directory recursively.
  */
 function collectMarkdownFiles(dir: string): string[] {
   if (!existsSync(dir)) return []
   try {
-    return readdirSync(dir)
-      .filter(f => f.endsWith('.md'))
-      .map(f => join(dir, f))
+    const entries = readdirSync(dir, { withFileTypes: true })
+    const files: string[] = []
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        files.push(...collectMarkdownFiles(fullPath))
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        files.push(fullPath)
+      }
+    }
+    return files
   } catch {
     return []
   }

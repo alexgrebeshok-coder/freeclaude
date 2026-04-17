@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { resolveMemoryProjectKey } from './memoryStore.js'
 
 const DAILY_DIR = join(homedir(), '.freeclaude', 'daily')
 
@@ -26,9 +27,14 @@ function getTime(): string {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 
+function getDailyDir(): string {
+  return join(DAILY_DIR, resolveMemoryProjectKey())
+}
+
 function ensureDir(): void {
-  if (!existsSync(DAILY_DIR)) {
-    mkdirSync(DAILY_DIR, { recursive: true })
+  const dir = getDailyDir()
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
   }
 }
 
@@ -56,7 +62,7 @@ function truncate(text: string, maxLen = 500): string {
  */
 export function logUserMessage(text: string): void {
   ensureDir()
-  const filePath = join(DAILY_DIR, `${getToday()}.md`)
+  const filePath = join(getDailyDir(), `${getToday()}.md`)
 
   let header = ''
   if (!existsSync(filePath)) {
@@ -72,7 +78,7 @@ export function logUserMessage(text: string): void {
  */
 export function logAssistantMessage(text: string): void {
   ensureDir()
-  const filePath = join(DAILY_DIR, `${getToday()}.md`)
+  const filePath = join(getDailyDir(), `${getToday()}.md`)
 
   const entry = `💡 ${truncate(text)}\n`
   appendFileSync(filePath, entry, 'utf-8')

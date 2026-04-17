@@ -8,10 +8,20 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 
 export const ENV_MEMORY_DIR = 'FREECLAUDE_MEMORY_DIR'
+export const ENV_MEMORY_PROJECT = 'FREECLAUDE_MEMORY_PROJECT'
+
+export type MemoryScope = 'global' | 'project'
+export type MemoryCategory =
+  | 'profile'
+  | 'preference'
+  | 'decision'
+  | 'project'
+  | 'note'
+  | 'general'
 
 function getMemoryDir(): string {
   if (process.env[ENV_MEMORY_DIR]) {
@@ -30,6 +40,10 @@ export type MemoryEntry = {
   createdAt: string
   updatedAt: string
   tags?: string[]
+  scope?: MemoryScope
+  projectKey?: string
+  category?: MemoryCategory
+  expiresAt?: string
 }
 
 export type MemoryStore = {
@@ -42,6 +56,47 @@ function ensureDir(): void {
   }
 }
 
+function sanitizeProjectKey(value: string): string {
+  const normalized = value
+    .normalize('NFC')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized || 'default-project'
+}
+
+export function resolveMemoryProjectKey(projectPath?: string): string {
+  const explicit = process.env[ENV_MEMORY_PROJECT]?.trim()
+  if (explicit) {
+    return sanitizeProjectKey(explicit)
+  }
+  return sanitizeProjectKey(resolve(projectPath || process.cwd()))
+}
+
+function isExpired(entry: MemoryEntry, now = Date.now()): boolean {
+  if (!entry.expiresAt) return false
+  const expiresAt = new Date(entry.expiresAt).getTime()
+  return Number.isFinite(expiresAt) && expiresAt <= now
+}
+
+function getStorageKey(
+  key: string,
+  scope: MemoryScope,
+  projectKey?: string,
+): string {
+  if (scope === 'project') {
+    return `project:${projectKey ?? resolveMemoryProjectKey()}:${key}`
+  }
+  return `global:${key}`
+}
+
+function normalizeMemoryEntry(entry: MemoryEntry): MemoryEntry {
+  return {
+    ...entry,
+    scope: entry.scope === 'project' ? 'project' : 'global',
+    category: entry.category ?? 'general',
+  }
+}
+
 export function loadMemory(): MemoryStore {
   ensureDir()
   if (!existsSync(getMemoryFile())) {
@@ -49,7 +104,17 @@ export function loadMemory(): MemoryStore {
   }
   try {
     const raw = readFileSync(getMemoryFile(), 'utf-8')
-    return JSON.parse(raw) as MemoryStore
+    const parsed = JSON.parse(raw) as MemoryStore
+    if (!parsed?.entries || typeof parsed.entries !== 'object') {
+      return { entries: {} }
+    }
+    const normalizedEntries = Object.fromEntries(
+      Object.entries(parsed.entries).map(([key, value]) => [
+        key,
+        normalizeMemoryEntry(value),
+      ]),
+    )
+    return { entries: normalizedEntries }
   } catch {
     return { entries: {} }
   }
@@ -60,52 +125,135 @@ export function saveMemory(store: MemoryStore): void {
   writeFileSync(getMemoryFile(), JSON.stringify(store, null, 2) + '\n')
 }
 
-export function remember(key: string, value: string, tags?: string[]): MemoryEntry {
+export type RememberOptions = {
+  tags?: readonly string[]
+  scope?: MemoryScope
+  projectKey?: string
+  category?: MemoryCategory
+  ttlDays?: number
+  expiresAt?: string
+}
+
+function normalizeRememberOptions(
+  tagsOrOptions?: string[] | RememberOptions,
+): RememberOptions {
+  if (Array.isArray(tagsOrOptions)) {
+    return { tags: tagsOrOptions }
+  }
+  return tagsOrOptions ?? {}
+}
+
+export function remember(
+  key: string,
+  value: string,
+  tagsOrOptions?: string[] | RememberOptions,
+): MemoryEntry {
   const store = loadMemory()
   const now = new Date().toISOString()
-  const existing = store.entries[key]
+  const options = normalizeRememberOptions(tagsOrOptions)
+  const candidateExistingEntries = Object.values(store.entries).filter(
+    entry => entry.key === key,
+  )
+  const fallbackExisting = candidateExistingEntries[0]
+  const scope = options.scope ?? fallbackExisting?.scope ?? 'global'
+  const projectKey =
+    scope === 'project'
+      ? options.projectKey ??
+        fallbackExisting?.projectKey ??
+        resolveMemoryProjectKey()
+      : undefined
+  const storageKey = getStorageKey(key, scope, projectKey)
+  const existing =
+    store.entries[storageKey] ??
+    candidateExistingEntries.find(entry =>
+      entry.key === key &&
+      (scope === 'project'
+        ? entry.scope === 'project' && entry.projectKey === projectKey
+        : entry.scope !== 'project'),
+    )
+  const expiresAt =
+    options.expiresAt ??
+    (typeof options.ttlDays === 'number'
+      ? new Date(Date.now() + options.ttlDays * 86_400_000).toISOString()
+      : existing?.expiresAt)
 
   const entry: MemoryEntry = {
     key,
     value,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    tags: tags ?? existing?.tags,
+    tags: options.tags ? [...options.tags] : existing?.tags,
+    scope,
+    projectKey,
+    category: options.category ?? existing?.category ?? 'general',
+    expiresAt,
   }
 
-  store.entries[key] = entry
+  store.entries[storageKey] = entry
   saveMemory(store)
   return entry
 }
 
 export function forget(key: string): boolean {
   const store = loadMemory()
-  if (!(key in store.entries)) return false
-  delete store.entries[key]
+  let removed = false
+  for (const storageKey of Object.keys(store.entries)) {
+    if (store.entries[storageKey]?.key === key || storageKey === key) {
+      delete store.entries[storageKey]
+      removed = true
+    }
+  }
+  if (!removed) return false
   saveMemory(store)
-  return true
+  return removed
 }
 
 export function recall(key: string): MemoryEntry | undefined {
   const store = loadMemory()
-  return store.entries[key]
+  const projectKey = resolveMemoryProjectKey()
+  const candidates = Object.values(store.entries)
+    .filter(entry => entry.key === key)
+    .filter(entry => !isExpired(entry))
+    .sort((a, b) => {
+      const aScore =
+        a.scope === 'project' && a.projectKey === projectKey
+          ? 2
+          : a.scope === 'global'
+            ? 1
+            : 0
+      const bScore =
+        b.scope === 'project' && b.projectKey === projectKey
+          ? 2
+          : b.scope === 'global'
+            ? 1
+            : 0
+      if (aScore !== bScore) return bScore - aScore
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
+  return candidates[0]
 }
 
 export function search(query: string): MemoryEntry[] {
   const store = loadMemory()
   const q = query.toLowerCase()
-  return Object.values(store.entries).filter(e =>
-    e.key.toLowerCase().includes(q) ||
-    e.value.toLowerCase().includes(q) ||
-    e.tags?.some(t => t.toLowerCase().includes(q)),
+  return Object.values(store.entries).filter(
+    e =>
+      !isExpired(e) &&
+      (e.key.toLowerCase().includes(q) ||
+        e.value.toLowerCase().includes(q) ||
+        e.tags?.some(t => t.toLowerCase().includes(q)) ||
+        e.projectKey?.toLowerCase().includes(q) ||
+        e.category?.toLowerCase().includes(q)),
   )
 }
 
 export function listAll(): MemoryEntry[] {
   const store = loadMemory()
-  return Object.values(store.entries).sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  )
+  return Object.values(store.entries)
+    .filter(entry => !isExpired(entry))
+    .sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )
 }
 
 export function clearAll(): number {
@@ -113,6 +261,40 @@ export function clearAll(): number {
   const count = Object.keys(store.entries).length
   saveMemory({ entries: {} })
   return count
+}
+
+export function listRelevantMemories(options: {
+  projectKey?: string
+  includeGlobal?: boolean
+} = {}): MemoryEntry[] {
+  const store = loadMemory()
+  const projectKey = options.projectKey ?? resolveMemoryProjectKey()
+  return Object.values(store.entries)
+    .filter(entry => !isExpired(entry))
+    .filter(entry => {
+      if (entry.scope === 'project') {
+        return entry.projectKey === projectKey
+      }
+      return options.includeGlobal !== false
+    })
+    .sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )
+}
+
+export function pruneExpiredMemories(): number {
+  const store = loadMemory()
+  let removed = 0
+  for (const [key, entry] of Object.entries(store.entries)) {
+    if (isExpired(entry)) {
+      delete store.entries[key]
+      removed += 1
+    }
+  }
+  if (removed > 0) {
+    saveMemory(store)
+  }
+  return removed
 }
 
 export function exportMarkdown(): string {

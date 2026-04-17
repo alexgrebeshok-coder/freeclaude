@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { loadPersistedSessions, savePersistedSessions } from "./runtime-state.mjs";
+import { runDirectSync } from "./freeclaude-direct.mjs";
+export { runDirectSync };
 
 export function readString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
@@ -157,6 +159,128 @@ export class WrappedRunError extends Error {
     this.stderr = details.stderr ?? "";
     this.envelope = details.envelope ?? null;
   }
+}
+
+export async function runSync({
+  executionMode = "direct",
+  wrapper,
+  binary,
+  stateDir,
+  workdir,
+  task,
+  mode = "code",
+  model,
+  timeoutSeconds = 120,
+  includeMemory = true,
+  sessionKey,
+  resumeSessionId,
+  forkSession = false,
+  permissionMode,
+  bareMode,
+  maxTurns,
+  effort,
+  maxBudgetUsd,
+  fallbackModel,
+  allowedTools,
+  disallowedTools,
+  tools,
+  systemPrompt,
+  appendSystemPrompt,
+  jsonSchema,
+  noPersist = false,
+  extraDirs = [],
+  persistBinding = true,
+  lastRunId,
+  cwd,
+}) {
+  if (executionMode === "wrapper") {
+    return runWrappedSync({
+      wrapper,
+      binary,
+      stateDir,
+      workdir,
+      task,
+      mode,
+      model,
+      timeoutSeconds,
+      includeMemory,
+      sessionKey,
+      resumeSessionId,
+      forkSession,
+      permissionMode,
+      bareMode,
+      maxTurns,
+      effort,
+      maxBudgetUsd,
+      fallbackModel,
+      allowedTools,
+      disallowedTools,
+      tools,
+      systemPrompt,
+      appendSystemPrompt,
+      jsonSchema,
+      noPersist,
+      extraDirs,
+      persistBinding,
+      lastRunId,
+      cwd,
+    });
+  }
+
+  const envelope = await runDirectSync({
+    binary,
+    workdir,
+    task,
+    mode,
+    model,
+    timeoutSeconds,
+    includeMemory,
+    sessionKey,
+    resumeSessionId,
+    forkSession,
+    permissionMode,
+    bareMode,
+    maxTurns,
+    effort,
+    maxBudgetUsd,
+    fallbackModel,
+    allowedTools,
+    disallowedTools,
+    tools,
+    systemPrompt,
+    appendSystemPrompt,
+    jsonSchema,
+    noPersist,
+    extraDirs,
+    cwd,
+  });
+
+  if (envelope.status !== "success") {
+    throw new WrappedRunError(
+      (envelope.error || envelope.output || "FreeClaude run failed").trim(),
+      {
+        code: envelope.exitCode ?? null,
+        stdout: envelope.output ?? "",
+        stderr: envelope.error ?? "",
+        envelope,
+      },
+    );
+  }
+
+  if (persistBinding) {
+    persistSessionBinding({
+      stateDir,
+      sessionKey,
+      workdir,
+      model,
+      mode,
+      envelope,
+      lastRunId,
+      lastStatus: envelope.status,
+    });
+  }
+
+  return { ...envelope, sessionKey: readString(sessionKey) || undefined };
 }
 
 export async function runWrappedSync({
@@ -333,9 +457,18 @@ export async function runWrappedSync({
   return { ...envelope, sessionKey: readString(sessionKey) || undefined };
 }
 
-export function getStatusText({ wrapper, binary, configPath, timeoutSeconds, stateDir, label = "FreeClaude Status" }) {
+export function getStatusText({
+  wrapper,
+  binary,
+  configPath,
+  timeoutSeconds,
+  stateDir,
+  executionMode,
+  label = "FreeClaude Status",
+}) {
   const storedSessions = loadPersistedSessions(stateDir).size;
   const configLine = configPath ? `Config: ${configPath}` : "Config: (not configured)";
+  const executionLine = executionMode ? `Execution mode: ${executionMode}` : null;
 
   try {
     if (configPath && existsSync(configPath)) {
@@ -347,6 +480,7 @@ export function getStatusText({ wrapper, binary, configPath, timeoutSeconds, sta
         `${label}\n` +
         `Wrapper: ${wrapper}\n` +
         `Binary: ${binary}\n` +
+        `${executionLine ? `${executionLine}\n` : ""}` +
         `${configLine}\n` +
         `Timeout: ${timeoutSeconds}s\n` +
         `StateDir: ${stateDir}\n` +
@@ -355,14 +489,15 @@ export function getStatusText({ wrapper, binary, configPath, timeoutSeconds, sta
       );
     }
 
-    return (
-      `${label}\n` +
-      `Wrapper: ${wrapper}\n` +
-      `Binary: ${binary}\n` +
-      `StateDir: ${stateDir}\n` +
-      `Stored Sessions: ${storedSessions}\n` +
-      (configPath ? `Config: not found (${configPath})` : configLine)
-    );
+      return (
+        `${label}\n` +
+        `Wrapper: ${wrapper}\n` +
+        `Binary: ${binary}\n` +
+        `${executionLine ? `${executionLine}\n` : ""}` +
+        `StateDir: ${stateDir}\n` +
+        `Stored Sessions: ${storedSessions}\n` +
+        (configPath ? `Config: not found (${configPath})` : configLine)
+      );
   } catch (error) {
     return `${label}\nError reading config: ${error.message}`;
   }

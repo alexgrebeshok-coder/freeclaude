@@ -121,4 +121,50 @@ describe('Memory Store', () => {
     const store = await import('../../services/memory/memoryStore.ts')
     expect(store.listAll()).toHaveLength(0)
   })
+
+  test('supports project-scoped memories', async () => {
+    process.env.FREECLAUDE_MEMORY_PROJECT = 'repo-a'
+    const store = await import('../../services/memory/memoryStore.ts')
+    store.remember('decision', 'use Bun for this project', {
+      scope: 'project',
+      category: 'decision',
+    })
+    store.remember('name', 'Sasha', { scope: 'global', category: 'profile' })
+
+    expect(store.listRelevantMemories({ projectKey: 'repo-a' })).toHaveLength(2)
+    expect(store.listRelevantMemories({ projectKey: 'repo-b' })).toHaveLength(1)
+    delete process.env.FREECLAUDE_MEMORY_PROJECT
+  })
+
+  test('keeps same key isolated across projects', async () => {
+    const store = await import('../../services/memory/memoryStore.ts')
+
+    store.remember('build-tool', 'bun in repo-a', {
+      scope: 'project',
+      projectKey: 'repo-a',
+    })
+    store.remember('build-tool', 'npm in repo-b', {
+      scope: 'project',
+      projectKey: 'repo-b',
+    })
+
+    expect(
+      store.listRelevantMemories({ projectKey: 'repo-a', includeGlobal: false })[0]?.value,
+    ).toBe('bun in repo-a')
+    expect(
+      store.listRelevantMemories({ projectKey: 'repo-b', includeGlobal: false })[0]?.value,
+    ).toBe('npm in repo-b')
+  })
+
+  test('prunes expired memories', async () => {
+    const store = await import('../../services/memory/memoryStore.ts')
+    store.remember('temp', 'soon gone', {
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    })
+    store.remember('stable', 'still here')
+
+    expect(store.pruneExpiredMemories()).toBe(1)
+    expect(store.recall('temp')).toBeUndefined()
+    expect(store.recall('stable')?.value).toBe('still here')
+  })
 })

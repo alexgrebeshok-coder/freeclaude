@@ -10,6 +10,10 @@ import {
   type Task,
   updateTask,
 } from '../utils/tasks.js'
+import {
+  findAvailableTask,
+  formatTaskAsPrompt,
+} from './useTaskListWatcher.helpers.js'
 
 const DEBOUNCE_MS = 1000
 
@@ -186,36 +190,4 @@ export function useTaskListWatcher({
     if (isLoading) return
     scheduleCheckRef.current()
   }, [enabled, isLoading])
-}
-
-/**
- * Find an available task that can be worked on:
- * - Status is 'pending'
- * - No owner assigned
- * - Not blocked by any unresolved tasks
- */
-function findAvailableTask(tasks: Task[]): Task | undefined {
-  const unresolvedTaskIds = new Set(
-    tasks.filter(t => t.status !== 'completed').map(t => t.id),
-  )
-
-  return tasks.find(task => {
-    if (task.status !== 'pending') return false
-    if (task.owner) return false
-    // Check all blockers are completed
-    return task.blockedBy.every(id => !unresolvedTaskIds.has(id))
-  })
-}
-
-/**
- * Format a task as a prompt for Claude to work on.
- */
-function formatTaskAsPrompt(task: Task): string {
-  let prompt = `Complete all open tasks. Start with task #${task.id}: \n\n ${task.subject}`
-
-  if (task.description) {
-    prompt += `\n\n${task.description}`
-  }
-
-  return prompt
 }

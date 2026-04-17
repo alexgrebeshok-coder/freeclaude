@@ -5,20 +5,9 @@ import {
 } from '../bootstrap/state.js'
 import { useTerminalNotification } from '../ink/useTerminalNotification.js'
 import { sendNotification } from '../services/notifier.js'
+import { shouldNotifyAfterTimeout } from './useNotifyAfterTimeout.helpers.js'
 // The time threshold in milliseconds for considering an interaction "recent" (6 seconds)
 export const DEFAULT_INTERACTION_THRESHOLD_MS = 6000
-
-function getTimeSinceLastInteraction(): number {
-  return Date.now() - getLastInteractionTime()
-}
-
-function hasRecentInteraction(threshold: number): boolean {
-  return getTimeSinceLastInteraction() < threshold
-}
-
-function shouldNotify(threshold: number): boolean {
-  return process.env.NODE_ENV !== 'test' && !hasRecentInteraction(threshold)
-}
 
 // NOTE: User interaction tracking is now done in App.tsx's processKeysInBatch
 // function, which calls updateLastInteractionTime() when any input is received.
@@ -53,7 +42,14 @@ export function useNotifyAfterTimeout(
   useEffect(() => {
     let hasNotified = false
     const timer = setInterval(() => {
-      if (shouldNotify(DEFAULT_INTERACTION_THRESHOLD_MS) && !hasNotified) {
+      if (
+        shouldNotifyAfterTimeout({
+          nodeEnv: process.env.NODE_ENV,
+          lastInteractionTime: getLastInteractionTime(),
+          threshold: DEFAULT_INTERACTION_THRESHOLD_MS,
+        }) &&
+        !hasNotified
+      ) {
         hasNotified = true
         clearInterval(timer)
         void sendNotification({ message, notificationType }, terminal)

@@ -31,6 +31,7 @@ import {
 } from './providerConfig.js'
 import {
   FallbackChain,
+  classifyRoutingGoal,
   shouldFallback,
 } from './fallbackChain.js'
 import {
@@ -43,9 +44,9 @@ import { recordLatency } from './fallbackEnhanced.js'
 import { logUsage } from '../usage/usageStore.js'
 import { estimateTokens, parseApiUsage } from '../usage/tokenCounter.js'
 import { calculateCost, calculateCostFromUsage } from '../usage/costCalculator.js'
-import { enrichContext } from '../memory/contextEnricher.js'
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
 import { parseProviderQualifiedModel } from '../../utils/freeclaudeConfig.js'
+import { z } from 'zod/v4'
 
 // ---------------------------------------------------------------------------
 // Types — minimal subset of Anthropic SDK types we need to produce
@@ -76,6 +77,278 @@ interface OpenAITool {
     parameters: Record<string, unknown>
     strict?: boolean
   }
+}
+
+type ImageSource =
+  | { type?: 'base64'; media_type?: string; data?: string }
+  | { type?: 'url'; url?: string }
+
+type MessageBlock =
+  | { type: 'text'; text?: string }
+  | { type: 'image'; source?: ImageSource }
+  | {
+      type: 'tool_use'
+      id?: string
+      name?: string
+      input?: unknown
+      extra_content?: Record<string, unknown>
+    }
+  | {
+      type: 'tool_result'
+      tool_use_id?: string
+      content?: unknown
+      is_error?: boolean
+    }
+  | { type: 'thinking'; thinking?: string }
+  | { type?: string; text?: string; source?: ImageSource }
+
+type MessageContent = string | MessageBlock[]
+
+type ShimMessage = {
+  role: string
+  content?: MessageContent
+  message?: {
+    role?: string
+    content?: MessageContent
+  }
+}
+
+type ToolChoice =
+  | { type?: 'auto' | 'tool' | 'any' | 'none'; name?: string }
+  | undefined
+
+type ResponseEnvelope<T> = {
+  data: T
+  response: Response
+  request_id: string
+}
+
+type PromiseWithResponse<T> = Promise<T> & {
+  withResponse: () => Promise<ResponseEnvelope<T>>
+}
+
+type ResultUsage = {
+  input_tokens?: number
+  output_tokens?: number
+  prompt_tokens?: number
+  completion_tokens?: number
+}
+
+type ResultWithUsage = {
+  usage?: ResultUsage
+}
+
+type NonStreamingToolCall = {
+  id: string
+  function: { name: string; arguments: string }
+  extra_content?: Record<string, unknown>
+}
+
+type NonStreamingChoiceMessage = {
+  role?: string
+  content?: string | null
+  reasoning_content?: string | null
+  tool_calls?: NonStreamingToolCall[]
+}
+
+type AnthropicContentBlock =
+  | { type: 'text'; text: string }
+  | {
+      type: 'tool_use'
+      id: string
+      name: string
+      input: unknown
+      extra_content?: Record<string, unknown>
+    }
+
+type JsonRecord = Record<string, unknown>
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isShimMessage(value: unknown): value is ShimMessage {
+  return typeof value === 'object' && value !== null && 'role' in value
+}
+
+function getInnerMessage(message: ShimMessage): { role?: string; content?: MessageContent } {
+  return message.message ?? message
+}
+
+function getMessageRole(message: ShimMessage): string {
+  return getInnerMessage(message).role ?? message.role
+}
+
+function getMessageContent(message: ShimMessage): MessageContent | undefined {
+  return getInnerMessage(message).content
+}
+
+function getMessageTextContent(message: ShimMessage | undefined): string {
+  const content = message ? getMessageContent(message) : undefined
+  return typeof content === 'string' ? content : ''
+}
+
+function getLastUserMessage(messages: unknown): ShimMessage | undefined {
+  if (!Array.isArray(messages)) return undefined
+  return [...messages]
+    .filter(isShimMessage)
+    .reverse()
+    .find(message => getMessageRole(message) === 'user')
+}
+
+function injectSystemMessage(
+  messages: unknown,
+  enrichedContext: string,
+): unknown {
+  if (!Array.isArray(messages)) return messages
+  const normalized = messages.filter(isShimMessage)
+  const sysIdx = normalized.findIndex(message => getMessageRole(message) === 'system')
+  if (sysIdx >= 0) {
+    const sysMsg = normalized[sysIdx]!
+    normalized[sysIdx] = {
+      ...sysMsg,
+      content: `${typeof getMessageContent(sysMsg) === 'string' ? getMessageContent(sysMsg) : ''}${enrichedContext}`,
+    }
+    return normalized
+  }
+  normalized.unshift({ role: 'system', content: enrichedContext })
+  return normalized
+}
+
+function getResultUsage(result: unknown): ResultUsage | undefined {
+  if (typeof result !== 'object' || result === null || !('usage' in result)) {
+    return undefined
+  }
+  return (result as ResultWithUsage).usage
+}
+
+function getReasoningContent(
+  message: NonStreamingChoiceMessage | undefined,
+): string | null | undefined {
+  return message?.content ?? message?.reasoning_content
+}
+
+function getMaxCompletionTokens(params: ShimCreateParams): number | undefined {
+  const paramsWithCompletionTokens = params as ShimCreateParams & {
+    max_completion_tokens?: unknown
+  }
+  return typeof paramsWithCompletionTokens.max_completion_tokens === 'number'
+    ? paramsWithCompletionTokens.max_completion_tokens
+    : undefined
+}
+
+function attachWithResponse<T>(promise: Promise<T>): PromiseWithResponse<T> {
+  const promiseWithResponse = promise as PromiseWithResponse<T>
+  promiseWithResponse.withResponse = async () => {
+    const data = await promise
+    return {
+      data,
+      response: new Response(),
+      request_id: makeMessageId(),
+    }
+  }
+  return promiseWithResponse
+}
+
+const OpenAIExtraContentSchema = z.record(z.string(), z.unknown())
+
+const OpenAIUsageSchema = z.object({
+  prompt_tokens: z.number().optional(),
+  completion_tokens: z.number().optional(),
+  total_tokens: z.number().optional(),
+  input_tokens: z.number().optional(),
+  output_tokens: z.number().optional(),
+}).passthrough()
+
+const OpenAIStreamToolCallSchema = z.object({
+  index: z.number(),
+  id: z.string().optional(),
+  type: z.string().optional(),
+  function: z.object({
+    name: z.string().optional(),
+    arguments: z.string().optional(),
+  }).passthrough().optional(),
+  extra_content: OpenAIExtraContentSchema.optional(),
+}).passthrough()
+
+const OpenAIStreamChunkSchema = z.object({
+  id: z.string().optional(),
+  object: z.string().optional(),
+  model: z.string().optional(),
+  choices: z.array(
+    z.object({
+      index: z.number(),
+      delta: z.object({
+        role: z.string().optional(),
+        content: z.string().nullable().optional(),
+        reasoning_content: z.string().nullable().optional(),
+        tool_calls: z.array(OpenAIStreamToolCallSchema).optional(),
+      }).passthrough(),
+      finish_reason: z.string().nullable(),
+    }).passthrough(),
+  ).default([]),
+  usage: OpenAIUsageSchema.optional(),
+}).passthrough()
+
+const OpenAINonStreamingToolCallSchema = z.object({
+  id: z.string(),
+  function: z.object({
+    name: z.string(),
+    arguments: z.string(),
+  }).passthrough(),
+  extra_content: OpenAIExtraContentSchema.optional(),
+}).passthrough()
+
+const OpenAINonStreamingResponseSchema = z.object({
+  id: z.string().optional(),
+  model: z.string().optional(),
+  choices: z.array(
+    z.object({
+      message: z.object({
+        role: z.string().optional(),
+        content: z.string().nullable().optional(),
+        reasoning_content: z.string().nullable().optional(),
+        tool_calls: z.array(OpenAINonStreamingToolCallSchema).optional(),
+      }).passthrough().optional(),
+      finish_reason: z.string().nullable().optional(),
+    }).passthrough(),
+  ),
+  usage: OpenAIUsageSchema.optional(),
+}).passthrough()
+
+type OpenAIStreamChunk = z.infer<typeof OpenAIStreamChunkSchema>
+type OpenAINonStreamingResponse = z.infer<typeof OpenAINonStreamingResponseSchema>
+
+function formatValidationError(prefix: string, error: z.ZodError): Error {
+  const details = error.issues
+    .slice(0, 3)
+    .map(issue => {
+      const path = issue.path.length > 0 ? issue.path.join('.') : 'root'
+      return `${path}: ${issue.message}`
+    })
+    .join('; ')
+  return new Error(`${prefix}${details ? ` (${details})` : ''}`)
+}
+
+function parseStreamChunk(raw: string): OpenAIStreamChunk | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  const result = OpenAIStreamChunkSchema.safeParse(parsed)
+  return result.success ? result.data : null
+}
+
+function parseNonStreamingResponse(
+  payload: unknown,
+): OpenAINonStreamingResponse {
+  const result = OpenAINonStreamingResponseSchema.safeParse(payload)
+  if (!result.success) {
+    throw formatValidationError('[FreeClaude] Invalid OpenAI response payload', result.error)
+  }
+  return result.data
 }
 
 function convertSystemPrompt(
@@ -144,7 +417,7 @@ function convertContentBlocks(
 }
 
 function convertMessages(
-  messages: Array<{ role: string; message?: { role?: string; content?: unknown }; content?: unknown }>,
+  messages: ShimMessage[],
   system: unknown,
 ): OpenAIMessage[] {
   const result: OpenAIMessage[] = []
@@ -156,10 +429,8 @@ function convertMessages(
   }
 
   for (const msg of messages) {
-    // Claude Code wraps messages in { role, message: { role, content } }
-    const inner = msg.message ?? msg
-    const role = (inner as { role?: string }).role ?? msg.role
-    const content = (inner as { content?: unknown }).content
+    const role = getMessageRole(msg)
+    const content = getMessageContent(msg)
 
     if (role === 'user') {
       // Check for tool_result blocks in user messages
@@ -209,12 +480,7 @@ function convertMessages(
 
         if (toolUses.length > 0) {
           assistantMsg.tool_calls = toolUses.map(
-            (tu: {
-              id?: string
-              name?: string
-              input?: unknown
-              extra_content?: Record<string, unknown>
-            }) => ({
+            (tu): OpenAIMessage['tool_calls'][number] => ({
               id: tu.id ?? `call_${Math.random().toString(36).slice(2)}`,
               type: 'function' as const,
               function: {
@@ -252,21 +518,23 @@ function normalizeSchemaForOpenAI(
   schema: Record<string, unknown>,
   strict = true,
 ): Record<string, unknown> {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
-    return (schema ?? {}) as Record<string, unknown>
+  if (!isRecord(schema)) {
+    return {}
   }
 
-  const record = { ...schema }
+  const record: Record<string, unknown> = { ...schema }
 
-  if (record.type === 'object' && record.properties) {
-    const properties = record.properties as Record<string, Record<string, unknown>>
-    const existingRequired = Array.isArray(record.required) ? record.required as string[] : []
+  if (record.type === 'object' && isRecord(record.properties)) {
+    const properties = record.properties
+    const existingRequired = Array.isArray(record.required)
+      ? record.required.filter((value): value is string => typeof value === 'string')
+      : []
 
     // Recurse into each property
     const normalizedProps: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(properties)) {
       normalizedProps[key] = normalizeSchemaForOpenAI(
-        value as Record<string, unknown>,
+        isRecord(value) ? value : {},
         strict,
       )
     }
@@ -288,19 +556,19 @@ function normalizeSchemaForOpenAI(
   // Recurse into array items
   if ('items' in record) {
     if (Array.isArray(record.items)) {
-      record.items = (record.items as unknown[]).map(
-        item => normalizeSchemaForOpenAI(item as Record<string, unknown>, strict),
+      record.items = record.items.map(
+        item => normalizeSchemaForOpenAI(isRecord(item) ? item : {}, strict),
       )
-    } else {
-      record.items = normalizeSchemaForOpenAI(record.items as Record<string, unknown>, strict)
+    } else if (isRecord(record.items)) {
+      record.items = normalizeSchemaForOpenAI(record.items, strict)
     }
   }
 
   // Recurse into combinators
   for (const key of ['anyOf', 'oneOf', 'allOf'] as const) {
     if (key in record && Array.isArray(record[key])) {
-      record[key] = (record[key] as unknown[]).map(
-        item => normalizeSchemaForOpenAI(item as Record<string, unknown>, strict),
+      record[key] = record[key].map(
+        item => normalizeSchemaForOpenAI(isRecord(item) ? item : {}, strict),
       )
     }
   }
@@ -318,14 +586,17 @@ function convertTools(
   return tools
     .filter(t => t.name !== 'ToolSearchTool') // Not relevant for OpenAI
     .map(t => {
-      const schema = { ...(t.input_schema ?? { type: 'object', properties: {} }) } as Record<string, unknown>
+      const schema = isRecord(t.input_schema)
+        ? { ...t.input_schema }
+        : { type: 'object', properties: {} }
 
       // For Codex/OpenAI: promote known Agent sub-fields into required[] only if
       // they actually exist in properties (Gemini rejects required keys absent from properties).
-      if (t.name === 'Agent' && schema.properties) {
-        const props = schema.properties as Record<string, unknown>
+      if (t.name === 'Agent' && isRecord(schema.properties)) {
+        const props = schema.properties
         if (!Array.isArray(schema.required)) schema.required = []
-        const req = schema.required as string[]
+        const req = schema.required.filter((value): value is string => typeof value === 'string')
+        schema.required = req
         for (const key of ['message', 'subagent_type']) {
           if (key in props && !req.includes(key)) req.push(key)
         }
@@ -345,32 +616,6 @@ function convertTools(
 // ---------------------------------------------------------------------------
 // Streaming: OpenAI SSE → Anthropic stream events
 // ---------------------------------------------------------------------------
-
-interface OpenAIStreamChunk {
-  id: string
-  object: string
-  model: string
-  choices: Array<{
-    index: number
-    delta: {
-      role?: string
-      content?: string | null
-      tool_calls?: Array<{
-        index: number
-        id?: string
-        type?: string
-        function?: { name?: string; arguments?: string }
-        extra_content?: Record<string, unknown>
-      }>
-    }
-    finish_reason: string | null
-  }>
-  usage?: {
-    prompt_tokens?: number
-    completion_tokens?: number
-    total_tokens?: number
-  }
-}
 
 function makeMessageId(): string {
   return `msg_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
@@ -445,10 +690,8 @@ async function* openaiStreamToAnthropic(
       if (!trimmed || trimmed === 'data: [DONE]') continue
       if (!trimmed.startsWith('data: ')) continue
 
-      let chunk: OpenAIStreamChunk
-      try {
-        chunk = JSON.parse(trimmed.slice(6))
-      } catch {
+      const chunk = parseStreamChunk(trimmed.slice(6))
+      if (!chunk) {
         continue
       }
 
@@ -461,7 +704,7 @@ async function* openaiStreamToAnthropic(
         // some providers send "" as first delta to signal streaming start.
         // Also handle reasoning_content (ZAI GLM-5, DeepSeek-R1) which some providers
         // return instead of content.
-        const textContent = delta.content ?? (delta as Record<string, unknown>).reasoning_content as string | null | undefined
+        const textContent = delta.content ?? delta.reasoning_content
         if (textContent != null) {
           if (!hasEmittedContentStart) {
             yield {
@@ -683,31 +926,17 @@ class OpenAIShimMessages {
     const chain = this.fallbackChain
 
     const promise = (async () => {
-      // Enrich context with GBrain if available
-      const lastUserMsg = Array.isArray(params.messages)
-        ? params.messages
-            ?.filter((m: Record<string, unknown>) => m.role === 'user')
-            .pop()
-        : undefined
-      const userText = typeof lastUserMsg?.content === 'string'
-        ? lastUserMsg.content
-        : ''
+      // Enrich context with query-aware persistent memory / RAG if available
+      const lastUserMsg = getLastUserMessage(params.messages)
+      const userText = getMessageTextContent(lastUserMsg)
       let enrichedContext = ''
-      if (userText.length > 10) {
-        try {
-          const { enrichedSystemPrompt } = await enrichContext(userText)
-          enrichedContext = enrichedSystemPrompt
-        } catch {
-          // Non-critical — silently continue without enrichment
-        }
-      }
 
-      // Auto-load daily notes and memory into system prompt
+      // Auto-load query-aware memory and relevant notes into system prompt
       try {
         const { loadSessionContext } = await import('../memory/sessionContext.js')
-        const sessionMemory = await loadSessionContext()
+        const sessionMemory = await loadSessionContext(userText)
         if (sessionMemory) {
-          enrichedContext = sessionMemory + (enrichedContext ? '\n\n' + enrichedContext : '')
+          enrichedContext = sessionMemory
         }
       } catch {
         // Non-critical
@@ -715,19 +944,9 @@ class OpenAIShimMessages {
 
       // Inject enriched context into system message if found
       if (enrichedContext) {
-        const msgs = Array.isArray(params.messages) ? [...params.messages] : params.messages
-        if (Array.isArray(msgs)) {
-          const sysIdx = msgs.findIndex((m: Record<string, unknown>) => m.role === 'system')
-          if (sysIdx >= 0) {
-            const sysMsg = msgs[sysIdx]
-            msgs[sysIdx] = {
-              ...sysMsg,
-              content: (sysMsg.content as string) + enrichedContext,
-            }
-          } else {
-            msgs.unshift({ role: 'system', content: enrichedContext })
-          }
-          params = { ...params, messages: msgs }
+        params = {
+          ...params,
+          messages: injectSystemMessage(params.messages, enrichedContext) as ShimCreateParams['messages'],
         }
       }
       const mainLoopModelOverride = getMainLoopModelOverride()
@@ -735,6 +954,7 @@ class OpenAIShimMessages {
         mainLoopModelOverride ?? undefined,
         chain.getProviders(),
       )
+      const routingGoal = classifyRoutingGoal(userText)
       const explicitProviderName = requestedModelSelection?.providerName
       const explicitModel = requestedModelSelection?.model?.trim() || undefined
       const hasExplicitModel = Boolean(mainLoopModelOverride && explicitModel)
@@ -751,7 +971,7 @@ class OpenAIShimMessages {
         )
       }
 
-      let currentProvider = pinnedProvider ?? chain.getCurrent()
+      let currentProvider = pinnedProvider ?? chain.getCurrent(routingGoal)
 
       // FreeClaude: if /model changed env vars, reload chain to pick up activeProvider
       const envBase = process.env.OPENAI_BASE_URL
@@ -764,7 +984,7 @@ class OpenAIShimMessages {
             ? chain.getProviders().find(
                 provider => provider.name.toLowerCase() === explicitProviderName,
               ) ?? null
-            : chain.getCurrent()
+            : chain.getCurrent(routingGoal)
       }
 
       let lastError: Error | null = null
@@ -805,12 +1025,7 @@ class OpenAIShimMessages {
           let promptTokens: number
           let completionTokens: number
 
-          const apiUsage = (result as Record<string, unknown>)?.usage as {
-            input_tokens?: number
-            output_tokens?: number
-            prompt_tokens?: number
-            completion_tokens?: number
-          } | undefined
+          const apiUsage = getResultUsage(result)
 
           if (apiUsage && (apiUsage.input_tokens || apiUsage.prompt_tokens)) {
             promptTokens = apiUsage.input_tokens ?? apiUsage.prompt_tokens ?? 0
@@ -827,6 +1042,7 @@ class OpenAIShimMessages {
             timestamp: new Date().toISOString(),
             provider: currentProvider.name,
             model: explicitModel || currentProvider.model,
+            taskGoal: routingGoal,
             promptTokens,
             completionTokens,
             totalTokens: promptTokens + completionTokens,
@@ -847,16 +1063,14 @@ class OpenAIShimMessages {
           try {
             const { logUserMessage, logAssistantMessage } = await import('../memory/conversationLogger.js')
             // Extract last user message
-            const lastUser = Array.isArray(params.messages)
-              ? params.messages
-                  ?.filter((m: Record<string, unknown>) => m.role === 'user')
-                  .pop()
-              : undefined
+            const lastUser = getLastUserMessage(params.messages)
             if (lastUser) {
-              const userText = typeof lastUser.content === 'string'
-                ? lastUser.content
-                : JSON.stringify(lastUser.content ?? '')
-              logUserMessage(userText)
+              const lastUserContent = getMessageContent(lastUser)
+              logUserMessage(
+                typeof lastUserContent === 'string'
+                  ? lastUserContent
+                  : JSON.stringify(lastUserContent ?? ''),
+              )
             }
             // Extract assistant response
             if (typeof completionText === 'string' && completionText.length > 0) {
@@ -892,7 +1106,7 @@ class OpenAIShimMessages {
             )
             recordLatency(currentProvider.name, Date.now() - startTime, false)
             chain.markDown(currentProvider.name)
-            currentProvider = chain.getNext(currentProvider.name)
+            currentProvider = chain.getNext(currentProvider.name, routingGoal)
           } else {
             throw error
           }
@@ -902,18 +1116,7 @@ class OpenAIShimMessages {
       throw lastError || new Error('[FreeClaude] All providers exhausted')
     })()
 
-    // Attach .withResponse for compatibility with Anthropic SDK
-    ;(promise as unknown as Record<string, unknown>).withResponse =
-      async () => {
-        const data = await promise
-        return {
-          data,
-          response: new Response(),
-          request_id: makeMessageId(),
-        }
-      }
-
-    return promise
+    return attachWithResponse(promise)
   }
 
   private _restoreEnv(
@@ -958,21 +1161,11 @@ class OpenAIShimMessages {
         )
       }
 
-      const data = await response.json()
+      const data = parseNonStreamingResponse(await response.json())
       return self._convertNonStreamingResponse(data, request.resolvedModel)
     })()
 
-      ; (promise as unknown as Record<string, unknown>).withResponse =
-        async () => {
-          const data = await promise
-          return {
-            data,
-            response: new Response(),
-            request_id: makeMessageId(),
-          }
-        }
-
-    return promise
+    return attachWithResponse(promise)
   }
 
   private async _doRequest(
@@ -1017,11 +1210,7 @@ class OpenAIShimMessages {
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
   ): Promise<Response> {
     const openaiMessages = convertMessages(
-      params.messages as Array<{
-        role: string
-        message?: { role?: string; content?: unknown }
-        content?: unknown
-      }>,
+      params.messages as ShimMessage[],
       params.system,
     )
 
@@ -1036,9 +1225,7 @@ class OpenAIShimMessages {
     const maxTokensValue = typeof params.max_tokens === 'number' && params.max_tokens > 0
       ? params.max_tokens
       : undefined
-    const maxCompletionTokensValue = typeof (params as Record<string, unknown>).max_completion_tokens === 'number'
-      ? (params as Record<string, unknown>).max_completion_tokens as number
-      : undefined
+    const maxCompletionTokensValue = getMaxCompletionTokens(params)
 
     if (maxTokensValue !== undefined) {
       body.max_completion_tokens = maxTokensValue
@@ -1064,7 +1251,7 @@ class OpenAIShimMessages {
       if (converted.length > 0) {
         body.tools = converted
         if (params.tool_choice) {
-          const tc = params.tool_choice as { type?: string; name?: string }
+          const tc = params.tool_choice as ToolChoice
           if (tc.type === 'auto') {
             body.tool_choice = 'auto'
           } else if (tc.type === 'tool' && tc.name) {
@@ -1142,35 +1329,15 @@ class OpenAIShimMessages {
   }
 
   private _convertNonStreamingResponse(
-    data: {
-      id?: string
-      model?: string
-      choices?: Array<{
-        message?: {
-          role?: string
-          content?: string | null
-          tool_calls?: Array<{
-            id: string
-            function: { name: string; arguments: string }
-            extra_content?: Record<string, unknown>
-          }>
-        }
-        finish_reason?: string
-      }>
-      usage?: {
-        prompt_tokens?: number
-        completion_tokens?: number
-      }
-    },
+    data: OpenAINonStreamingResponse,
     model: string,
   ) {
     const choice = data.choices?.[0]
-    const content: Array<Record<string, unknown>> = []
+    const content: AnthropicContentBlock[] = []
 
     // Handle reasoning_content (ZAI GLM-5, DeepSeek-R1) — some providers
     // return reasoning_content instead of content in the final message.
-    const messageContent = choice?.message?.content
-      ?? (choice?.message as Record<string, unknown>)?.reasoning_content as string | null | undefined
+    const messageContent = getReasoningContent(choice?.message as NonStreamingChoiceMessage | undefined)
     if (messageContent) {
       content.push({ type: 'text', text: messageContent })
     }
@@ -1226,11 +1393,16 @@ class OpenAIShimBeta {
   }
 }
 
+export interface OpenAIShimClient {
+  beta: OpenAIShimBeta
+  messages: OpenAIShimMessages
+}
+
 export function createOpenAIShimClient(options: {
   defaultHeaders?: Record<string, string>
   maxRetries?: number
   timeout?: number
-}): unknown {
+}): OpenAIShimClient {
   // When Gemini provider is active, map Gemini env vars to OpenAI-compatible ones
   // so the existing providerConfig.ts infrastructure picks them up correctly.
   if (

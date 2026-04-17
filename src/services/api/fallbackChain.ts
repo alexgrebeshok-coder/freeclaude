@@ -39,11 +39,19 @@ export interface FallbackStats {
   lastSwitch?: { from: string; to: string; reason: string; at: string }
 }
 
+export type RoutingGoal = 'coding' | 'chat' | 'analysis'
+
 interface ProviderRuntime extends ProviderConfig {
   /** Runtime penalty counter — after 3 consecutive errors, deprioritized for 5 min */
   errorStreak: number
   /** Timestamp when the provider was marked down (null = healthy) */
   markedDownAt: number | null
+  /** Last measured latency in ms (null = unknown) */
+  latencyMs: number | null
+  /** Health status */
+  health: 'unknown' | 'healthy' | 'degraded' | 'down'
+  /** Timestamp of last health check */
+  lastHealthCheckAt: number | null
 }
 
 type EnvProviderSpec = {
@@ -102,6 +110,174 @@ const NETWORK_ERROR_PATTERNS = [
   'abort error',
 ]
 
+const CODING_TASK_HINTS = [
+  'fix',
+  'bug',
+  'debug',
+  'refactor',
+  'implement',
+  'write code',
+  'generate tests',
+  'test',
+  'function',
+  'class',
+  'typescript',
+  'javascript',
+  'python',
+  'rust',
+  'golang',
+  'stack trace',
+  'compile',
+  'build',
+  'file',
+]
+
+const ANALYSIS_TASK_HINTS = [
+  'analyze',
+  'analysis',
+  'architecture',
+  'compare',
+  'tradeoff',
+  'reason about',
+  'investigate',
+  'root cause',
+  'explain why',
+  'design',
+  'deep dive',
+  'think through',
+]
+
+const CHAT_TASK_HINTS = [
+  'hello',
+  'hi',
+  'thanks',
+  'thank you',
+  'quick question',
+  'summarize',
+  'briefly',
+]
+
+const CODING_MODEL_HINTS = [
+  'coder',
+  'codex',
+  'codestral',
+  'kimi',
+  'k2.5',
+  'qwen3-coder',
+  'qwen-coder',
+]
+
+const ANALYSIS_MODEL_HINTS = [
+  'glm-5',
+  'reasoner',
+  'r1',
+  'qwq',
+  'gpt-5',
+  '70b',
+  'deepseek',
+]
+
+const CHAT_MODEL_HINTS = [
+  'flash',
+  'mini',
+  'turbo',
+  '3b',
+  '8b',
+  'llama3.2',
+  'qwen2.5:3b',
+  'qwen2.5:7b',
+]
+
+function includesAny(text: string, needles: string[]): boolean {
+  return needles.some(needle => text.includes(needle))
+}
+
+export function classifyRoutingGoal(input: string | undefined): RoutingGoal {
+  const text = (input ?? '').trim().toLowerCase()
+  if (!text) {
+    return 'coding'
+  }
+
+  const codingScore =
+    CODING_TASK_HINTS.filter(hint => text.includes(hint)).length +
+    (/[`{};]/.test(text) ? 2 : 0)
+  const analysisScore =
+    ANALYSIS_TASK_HINTS.filter(hint => text.includes(hint)).length +
+    (text.length > 500 ? 1 : 0)
+  const chatScore =
+    CHAT_TASK_HINTS.filter(hint => text.includes(hint)).length +
+    (text.length < 120 ? 1 : 0)
+
+  if (analysisScore > codingScore && analysisScore >= chatScore && analysisScore > 0) {
+    return 'analysis'
+  }
+  if (codingScore > 0) {
+    return 'coding'
+  }
+  if (chatScore > 0) {
+    return 'chat'
+  }
+  return 'coding'
+}
+
+function scoreProviderForGoal(
+  provider: ProviderRuntime,
+  goal: RoutingGoal,
+): number {
+  const haystack =
+    `${provider.name} ${provider.model} ${provider.baseUrl}`.toLowerCase()
+  let score = -provider.priority
+
+  if (provider.health === 'healthy') score += 6
+  else if (provider.health === 'degraded') score -= 2
+  else if (provider.health === 'down') score -= 12
+
+  switch (goal) {
+    case 'coding':
+      if (includesAny(haystack, CODING_MODEL_HINTS)) score += 24
+      if (includesAny(haystack, ANALYSIS_MODEL_HINTS)) score += 4
+      if (includesAny(haystack, CHAT_MODEL_HINTS)) score -= 8
+      break
+    case 'analysis':
+      if (includesAny(haystack, ANALYSIS_MODEL_HINTS)) score += 24
+      if (includesAny(haystack, CODING_MODEL_HINTS)) score += 8
+      if (includesAny(haystack, CHAT_MODEL_HINTS)) score -= 10
+      break
+    case 'chat':
+      if (includesAny(haystack, CHAT_MODEL_HINTS)) score += 24
+      if (isLocalProvider(provider.baseUrl)) score += 8
+      if (includesAny(haystack, ANALYSIS_MODEL_HINTS)) score -= 10
+      break
+  }
+
+  if (
+    goal === 'chat' &&
+    typeof provider.latencyMs === 'number' &&
+    provider.latencyMs > 0
+  ) {
+    score += Math.max(0, 5000 - provider.latencyMs) / 500
+  }
+
+  return score
+}
+
+function pickBestProvider(
+  providers: ProviderRuntime[],
+  goal: RoutingGoal,
+): ProviderRuntime | null {
+  const candidates = providers.filter(provider => provider.markedDownAt === null)
+  const source = candidates.length > 0 ? candidates : providers
+  if (source.length === 0) return null
+
+  return source
+    .slice()
+    .sort((a, b) => {
+      const scoreDiff = scoreProviderForGoal(b, goal) - scoreProviderForGoal(a, goal)
+      if (scoreDiff !== 0) return scoreDiff
+      return a.priority - b.priority
+    })[0] ?? null
+}
+
 function toFallbackLogLevel(
   value: unknown,
 ): FallbackDefaults['logLevel'] | undefined {
@@ -159,6 +335,9 @@ function createRuntimeProvider(
     ...config,
     errorStreak: 0,
     markedDownAt: null,
+    latencyMs: null,
+    health: 'unknown',
+    lastHealthCheckAt: null,
   }
 }
 
@@ -221,6 +400,7 @@ export class FallbackChain {
               priority: p.priority ?? 999,
               timeout: p.timeout ?? 30000,
             }))
+            .filter(p => p.apiKey || isLocalProvider(p.baseUrl))
 
           this.enabled = true
           this.log('info', `Loaded ${this.providers.length} providers from ${configPath}`)
@@ -328,8 +508,12 @@ export class FallbackChain {
    * Get the current (best) provider for a request.
    * Skips providers that are marked down (unless cooldown expired).
    */
-  getCurrent(): ProviderRuntime | null {
+  getCurrent(goal?: RoutingGoal): ProviderRuntime | null {
     this.recoverMarkedDown()
+
+    if (goal) {
+      return pickBestProvider(this.providers, goal)
+    }
 
     for (const p of this.providers) {
       if (p.markedDownAt === null) {
@@ -345,7 +529,7 @@ export class FallbackChain {
    * Get next available provider after an error.
    * Returns null if no more providers to try.
    */
-  getNext(failedProvider?: string): ProviderRuntime | null {
+  getNext(failedProvider?: string, goal?: RoutingGoal): ProviderRuntime | null {
     this.recoverMarkedDown()
     this.stats.totalRequests++
 
@@ -357,6 +541,27 @@ export class FallbackChain {
 
     // Find current index
     const currentIdx = this.providers.findIndex(p => p.name === (failedProvider || current.name))
+
+    if (goal) {
+      const next = pickBestProvider(
+        this.providers.filter(p => p.name !== (failedProvider || current.name)),
+        goal,
+      )
+      if (next) {
+        this.stats.fallbacks[next.name] = (this.stats.fallbacks[next.name] || 0) + 1
+        this.stats.lastSwitch = {
+          from: failedProvider || current.name,
+          to: next.name,
+          reason: `error-${goal}`,
+          at: new Date().toISOString(),
+        }
+        this.log(
+          'info',
+          `Switched to ${next.name} (from ${failedProvider || current.name}, routed for ${goal})`,
+        )
+      }
+      return next
+    }
 
     // Try to find next healthy provider
     for (let i = currentIdx + 1; i < this.providers.length; i++) {
@@ -396,11 +601,15 @@ export class FallbackChain {
   /**
    * Report a successful request for a provider (resets error streak).
    */
-  markSuccess(providerName: string): void {
+  markSuccess(providerName: string, latencyMs?: number): void {
     const p = this.providers.find(pr => pr.name === providerName)
     if (p) {
       p.errorStreak = 0
       p.markedDownAt = null
+      p.health = 'healthy'
+      if (typeof latencyMs === 'number') {
+        p.latencyMs = latencyMs
+      }
     }
   }
 
@@ -477,5 +686,81 @@ export class FallbackChain {
     if (levels.indexOf(level) >= levels.indexOf(this.defaults.logLevel)) {
       console.error(`[FreeClaude] ${message}`)
     }
+  }
+
+  // ---- Health checks ----
+
+  /**
+   * Ping a single provider by hitting its /models endpoint.
+   * Returns latency in ms, or -1 on failure.
+   */
+  async pingProvider(providerName: string): Promise<number> {
+    const p = this.providers.find(pr => pr.name === providerName)
+    if (!p) return -1
+
+    const url = `${p.baseUrl.replace(/\/+$/, '')}/models`
+    const start = Date.now()
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 10000)
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${p.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      })
+      clearTimeout(timer)
+      const latency = Date.now() - start
+
+      p.lastHealthCheckAt = Date.now()
+      p.latencyMs = latency
+
+      if (resp.ok) {
+        p.health = latency > 5000 ? 'degraded' : 'healthy'
+        this.log('debug', `Health: ${p.name} → ${p.health} (${latency}ms)`)
+      } else if (resp.status === 401 || resp.status === 403) {
+        p.health = 'down'
+        this.log('warn', `Health: ${p.name} → down (auth error ${resp.status})`)
+      } else {
+        p.health = 'degraded'
+        this.log('warn', `Health: ${p.name} → degraded (HTTP ${resp.status}, ${latency}ms)`)
+      }
+      return latency
+    } catch {
+      p.health = 'down'
+      p.latencyMs = -1
+      p.lastHealthCheckAt = Date.now()
+      this.log('warn', `Health: ${p.name} → down (unreachable)`)
+      return -1
+    }
+  }
+
+  /**
+   * Health-check all providers concurrently.
+   * Returns a map of provider name → { health, latencyMs }.
+   */
+  async healthCheckAll(): Promise<Record<string, { health: string; latencyMs: number }>> {
+    const results: Record<string, { health: string; latencyMs: number }> = {}
+    await Promise.all(
+      this.providers.map(async (p) => {
+        const latency = await this.pingProvider(p.name)
+        results[p.name] = { health: p.health, latencyMs: latency }
+      }),
+    )
+    return results
+  }
+
+  /**
+   * Get provider health info without performing a check.
+   */
+  getProviderHealth(): Array<{ name: string; health: string; latencyMs: number | null; lastCheck: number | null }> {
+    return this.providers.map(p => ({
+      name: p.name,
+      health: p.health,
+      latencyMs: p.latencyMs,
+      lastCheck: p.lastHealthCheckAt,
+    }))
   }
 }

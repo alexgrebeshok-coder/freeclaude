@@ -22,6 +22,7 @@ import { jsonStringify } from '../utils/slowOperations.js';
 import { handleCoordinatorPermission } from './toolPermission/handlers/coordinatorHandler.js';
 import { handleInteractivePermission } from './toolPermission/handlers/interactiveHandler.js';
 import { handleSwarmWorkerPermission } from './toolPermission/handlers/swarmWorkerHandler.js';
+import { shouldAttemptSpeculativeBashClassifier } from './useCanUseTool.helpers.js';
 import { createPermissionContext, createPermissionQueueOps } from './toolPermission/PermissionContext.js';
 import { logPermissionDecision } from './toolPermission/permissionLogging.js';
 export type CanUseToolFn<Input extends Record<string, unknown> = Record<string, unknown>> = (tool: ToolType, input: Input, toolUseContext: ToolUseContext, assistantMessage: AssistantMessage, toolUseID: string, forceDecision?: PermissionDecision<Input>) => Promise<PermissionDecision<Input>>;
@@ -123,10 +124,14 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
                 resolve(swarmDecision);
                 return;
               }
-              if (feature("BASH_CLASSIFIER") && result.pendingClassifierCheck && tool.name === BASH_TOOL_NAME && !appState.toolPermissionContext.awaitAutomatedChecksBeforeDialog) {
-                const speculativePromise = peekSpeculativeClassifierCheck((input as {
-                  command: string;
-                }).command);
+               if (feature("BASH_CLASSIFIER") && shouldAttemptSpeculativeBashClassifier({
+                 pendingClassifierCheck: result.pendingClassifierCheck,
+                 toolName: tool.name,
+                 awaitAutomatedChecksBeforeDialog: appState.toolPermissionContext.awaitAutomatedChecksBeforeDialog
+               })) {
+                  const speculativePromise = peekSpeculativeClassifierCheck((input as {
+                    command: string;
+                  }).command);
                 if (speculativePromise) {
                   const raceResult = await Promise.race([speculativePromise.then(_temp), new Promise(_temp2)]);
                   if (ctx.resolveIfAborted(resolve)) {

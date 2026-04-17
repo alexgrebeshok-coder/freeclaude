@@ -20,6 +20,7 @@ import {
   isInProcessTeammateTask,
 } from '../tasks/InProcessTeammateTask/types.js'
 import { isBackgroundTask } from '../tasks/types.js'
+import { getNextTeammateSelectionState } from './useBackgroundTaskNavigation.helpers.js'
 
 // Step teammate selection by delta, wrapping across leader(-1)..teammates(0..n-1)..hide(n).
 // First step from a collapsed tree expands it and parks on leader.
@@ -30,30 +31,17 @@ function stepTeammateSelection(
   setAppState(prev => {
     const currentCount = getRunningTeammatesSorted(prev.tasks).length
     if (currentCount === 0) return prev
-
-    if (prev.expandedView !== 'teammates') {
-      return {
-        ...prev,
-        expandedView: 'teammates' as const,
-        viewSelectionMode: 'selecting-agent',
-        selectedIPAgentIndex: -1,
-      }
-    }
-
-    const maxIdx = currentCount // hide row
-    const cur = prev.selectedIPAgentIndex
-    const next =
-      delta === 1
-        ? cur >= maxIdx
-          ? -1
-          : cur + 1
-        : cur <= -1
-          ? maxIdx
-          : cur - 1
     return {
       ...prev,
-      selectedIPAgentIndex: next,
-      viewSelectionMode: 'selecting-agent',
+      ...getNextTeammateSelectionState(
+        {
+          expandedView: prev.expandedView,
+          viewSelectionMode: prev.viewSelectionMode,
+          selectedIPAgentIndex: prev.selectedIPAgentIndex,
+        },
+        currentCount,
+        delta,
+      ),
     }
   })
 }

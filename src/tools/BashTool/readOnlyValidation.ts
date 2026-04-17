@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import type { z } from 'zod/v4'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import {
@@ -29,6 +30,10 @@ import {
   PATH_EXTRACTORS,
   type PathCommand,
 } from './pathValidation.js'
+import {
+  hasSafeReadOnlyPathGlobs,
+  resolveReadOnlyCdTarget,
+} from './readOnlyValidation.helpers.js'
 import { sedCommandIsAllowedByAllowlist } from './sedValidation.js'
 
 // Unified command validation configuration system
@@ -1595,13 +1600,18 @@ const READONLY_COMMAND_REGEXES = new Set([
  * those are caught by COMMAND_SUBSTITUTION_PATTERNS in bashSecurity.ts.
  *
  * @param command The command string to check
- * @returns true if the command contains unquoted glob or expandable `$`
+ * @returns metadata about unquoted glob and variable expansions
  */
-function containsUnquotedExpansion(command: string): boolean {
+function detectUnquotedExpansion(command: string): {
+  hasUnquotedGlob: boolean
+  hasExpandableVariable: boolean
+} {
   // Track quote state to avoid false positives for patterns inside quoted strings
   let inSingleQuote = false
   let inDoubleQuote = false
   let escaped = false
+  let hasUnquotedGlob = false
+  let hasExpandableVariable = false
 
   for (let i = 0; i < command.length; i++) {
     const currentChar = command[i]
@@ -1649,7 +1659,7 @@ function containsUnquotedExpansion(command: string): boolean {
     if (currentChar === '$') {
       const next = command[i + 1]
       if (next && /[A-Za-z_@*#?!$0-9-]/.test(next)) {
-        return true
+        hasExpandableVariable = true
       }
     }
 
@@ -1661,11 +1671,14 @@ function containsUnquotedExpansion(command: string): boolean {
     // Check for glob characters outside all quotes.
     // These could expand to anything, including dangerous flags.
     if (currentChar && /[?*[\]]/.test(currentChar)) {
-      return true
+      hasUnquotedGlob = true
     }
   }
 
-  return false
+  return {
+    hasUnquotedGlob,
+    hasExpandableVariable,
+  }
 }
 
 /**
@@ -1675,7 +1688,7 @@ function containsUnquotedExpansion(command: string): boolean {
  * @param command The command string to check
  * @returns true if the command is read-only
  */
-function isCommandReadOnly(command: string): boolean {
+function isCommandReadOnly(command: string, cwd: string): boolean {
   // Handle common stderr-to-stdout redirection pattern
   // This handles both "command 2>&1" at the end of a full command
   // and "command 2>&1" as part of a pipeline component
@@ -1703,7 +1716,12 @@ function isCommandReadOnly(command: string): boolean {
   // check inside isCommandSafeViaFlagParsing only covers COMMAND_ALLOWLIST
   // commands; hand-written regexes in READONLY_COMMAND_REGEXES (uniq, jq, cd)
   // have no such guard. See containsUnquotedExpansion for full analysis.
-  if (containsUnquotedExpansion(testCommand)) {
+  const { hasUnquotedGlob, hasExpandableVariable } =
+    detectUnquotedExpansion(testCommand)
+  if (hasExpandableVariable) {
+    return false
+  }
+  if (hasUnquotedGlob && !hasSafeReadOnlyPathGlobs(testCommand, cwd)) {
     return false
   }
 
@@ -1966,14 +1984,25 @@ export function checkReadOnlyConstraints(
   }
 
   // Check if all subcommands are read-only
-  const allSubcommandsReadOnly = splitCommand_DEPRECATED(command).every(
-    subcmd => {
-      if (bashCommandIsSafe_DEPRECATED(subcmd).behavior !== 'passthrough') {
-        return false
-      }
-      return isCommandReadOnly(subcmd)
-    },
-  )
+  let effectiveCwd = getCwd()
+  let allSubcommandsReadOnly = true
+
+  for (const subcmd of splitCommand_DEPRECATED(command)) {
+    if (bashCommandIsSafe_DEPRECATED(subcmd).behavior !== 'passthrough') {
+      allSubcommandsReadOnly = false
+      break
+    }
+
+    if (!isCommandReadOnly(subcmd, effectiveCwd)) {
+      allSubcommandsReadOnly = false
+      break
+    }
+
+    const nextCwd = resolveReadOnlyCdTarget(subcmd, effectiveCwd)
+    if (nextCwd !== null) {
+      effectiveCwd = resolve(nextCwd)
+    }
+  }
 
   if (allSubcommandsReadOnly) {
     return {

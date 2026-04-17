@@ -6,6 +6,7 @@ import {
 } from '../utils/messageQueueManager.js'
 import type { QueryGuard } from '../utils/QueryGuard.js'
 import { processQueueIfReady } from '../utils/queueProcessor.js'
+import { shouldProcessQueue } from './useQueueProcessor.helpers.js'
 
 type UseQueueProcessorParams = {
   executeQueuedInput: (commands: QueuedCommand[]) => Promise<void>
@@ -46,9 +47,15 @@ export function useQueueProcessor({
   )
 
   useEffect(() => {
-    if (isQueryActive) return
-    if (hasActiveLocalJsxUI) return
-    if (queueSnapshot.length === 0) return
+    if (
+      !shouldProcessQueue({
+        isQueryActive,
+        hasActiveLocalJsxUI,
+        queueLength: queueSnapshot.length,
+      })
+    ) {
+      return
+    }
 
     // Reservation is now owned by handlePromptSubmit (inside executeUserInput's
     // try block). The sync chain executeQueuedInput → handlePromptSubmit →

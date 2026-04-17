@@ -3,7 +3,13 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
-import { FallbackChain, shouldFallback, isNetworkError, resolveApiKey } from './fallbackChain.ts'
+import {
+  FallbackChain,
+  classifyRoutingGoal,
+  shouldFallback,
+  isNetworkError,
+  resolveApiKey,
+} from './fallbackChain.ts'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -204,5 +210,38 @@ describe('FallbackChain', () => {
     expect(stats.totalRequests).toBe(0)
     expect(stats.fallbacks).toEqual({})
     expect(stats.errors).toEqual({})
+  })
+
+  test('classifies coding vs analysis prompts', () => {
+    expect(classifyRoutingGoal('Fix TypeScript error in auth.ts')).toBe('coding')
+    expect(
+      classifyRoutingGoal('Analyze architecture tradeoffs and compare provider reliability'),
+    ).toBe('analysis')
+    expect(classifyRoutingGoal('Hi, quick question')).toBe('chat')
+  })
+
+  test('prefers reasoning model for analysis tasks', () => {
+    writeFileSync(testConfigPath, JSON.stringify({
+      providers: [
+        { name: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'test-key', model: 'gpt-4o', priority: 0 },
+        { name: 'zai', baseUrl: 'https://api.z.ai/api/coding/paas/v4', apiKey: 'test-key', model: 'glm-5', priority: 1 },
+      ],
+    }))
+
+    const chain = new FallbackChain()
+    expect(chain.getCurrent('analysis')?.name).toBe('zai')
+  })
+
+  test('prefers fast local model for chat tasks', () => {
+    writeFileSync(testConfigPath, JSON.stringify({
+      providers: [
+        { name: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'test-key', model: 'moonshotai/kimi-k2.5', priority: 0 },
+        { name: 'zai', baseUrl: 'https://api.z.ai/api/coding/paas/v4', apiKey: 'test-key', model: 'glm-5', priority: 1 },
+        { name: 'ollama', baseUrl: 'http://localhost:11434/v1', apiKey: 'ollama', model: 'qwen2.5:3b', priority: 2 },
+      ],
+    }))
+
+    const chain = new FallbackChain()
+    expect(chain.getCurrent('chat')?.name).toBe('ollama')
   })
 })

@@ -444,35 +444,7 @@ record_memory_summary() {
     esac
   fi
 
-  SUMMARY_LINE="$(ENVELOPE_JSON="$envelope_json" USER_PROMPT="$USER_PROMPT" python3 - <<'PY'
-import json
-import os
-import textwrap
-
-data = json.loads(os.environ["ENVELOPE_JSON"])
-summary = (data.get("summary") or "").strip()
-status = (data.get("status") or "").strip()
-task = textwrap.shorten((os.environ.get("USER_PROMPT") or "").strip(), width=140, placeholder="...")
-model = (data.get("actualModel") or data.get("model") or "").strip()
-session_id = (data.get("sessionId") or "").strip()
-duration_ms = data.get("durationMs") or 0
-
-if summary:
-    print(f"Task: {task}")
-    print(f"Status: {status}")
-    print(f"Summary: {textwrap.shorten(summary, width=220, placeholder='...')}")
-    if model:
-        print(f"Model: {model}")
-    if session_id:
-        print(f"Session: {session_id}")
-    if isinstance(duration_ms, (int, float)) and duration_ms > 0:
-        print(f"Duration: {round(duration_ms / 1000, 1)}s")
-PY
-)"
-
-  if [[ -n "${SUMMARY_LINE:-}" ]]; then
-    "$BRIDGE_SCRIPT" record "$SUMMARY_LINE" "${WORKDIR:-cli}" >/dev/null 2>&1 || true
-  fi
+  BRIDGE_RECORD_JSON="$envelope_json" "$BRIDGE_SCRIPT" record-json "$USER_PROMPT" "${WORKDIR:-cli}" >/dev/null 2>&1 || true
 }
 
 persist_runtime_state() {
@@ -807,12 +779,10 @@ fi
 
 # Auto-select OpenRouter when key available and model not overridden
 if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
-      export FREECLAUDE_PREFER_ENV_OPENROUTER=1
-    else
-      unset FREECLAUDE_PREFER_ENV_OPENROUTER
-    fi
-    ;;
-esac
+  export FREECLAUDE_PREFER_ENV_OPENROUTER=1
+else
+  unset FREECLAUDE_PREFER_ENV_OPENROUTER
+fi
 
 CMD_BASE=("$FC_BINARY" "--print" "${COMMON_ARGS[@]}" "--" "$PROMPT")
 

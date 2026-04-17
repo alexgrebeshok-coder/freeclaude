@@ -57,5 +57,8 @@ jobs:
       - name: Trust baseline
         run: npm run check:trust-baseline
 
+      - name: Typecheck supported surfaces
+        run: npm run typecheck:supported
+
       - name: Desktop & Extension typecheck
         run: npm run typecheck:desktop-extension

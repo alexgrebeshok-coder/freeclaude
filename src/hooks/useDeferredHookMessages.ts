@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { HookResultMessage, Message } from '../types/message.js'
+import {
+  prependDeferredHookMessages,
+  shouldFlushDeferredHookMessages,
+} from './useDeferredHookMessages.helpers.js'
 
 /**
  * Manages deferred SessionStart hook messages so the REPL can render
@@ -25,7 +29,7 @@ export function useDeferredHookMessages(
       resolvedRef.current = true
       pendingRef.current = null
       if (msgs.length > 0) {
-        setMessages(prev => [...msgs, ...prev])
+        setMessages(prev => prependDeferredHookMessages(prev, msgs))
       }
     })
     return () => {
@@ -34,13 +38,20 @@ export function useDeferredHookMessages(
   }, [setMessages])
 
   return useCallback(async () => {
-    if (resolvedRef.current || !pendingRef.current) return
+    if (
+      !shouldFlushDeferredHookMessages({
+        resolved: resolvedRef.current,
+        hasPendingPromise: Boolean(pendingRef.current),
+      })
+    ) {
+      return
+    }
     const msgs = await pendingRef.current
     if (resolvedRef.current) return
     resolvedRef.current = true
     pendingRef.current = null
     if (msgs.length > 0) {
-      setMessages(prev => [...msgs, ...prev])
+      setMessages(prev => prependDeferredHookMessages(prev, msgs))
     }
   }, [setMessages])
 }

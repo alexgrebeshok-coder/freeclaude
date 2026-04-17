@@ -2,7 +2,8 @@ import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-export const MAX_PERSISTED_RUNS = 50;
+export const MAX_PERSISTED_RUNS = 100;
+export const MAX_RESULT_JSON_BYTES = 8000;
 export const DEFAULT_STATE_DIR = path.join(
   homedir(),
   ".openclaw",
@@ -110,8 +111,20 @@ export function savePersistedRuns(stateDir = DEFAULT_STATE_DIR, runs) {
     .filter((run) => run.runId)
     .sort((a, b) => a.startedAt - b.startedAt);
 
-  while (entries.length > MAX_PERSISTED_RUNS) {
-    entries.shift();
+  // Archive evicted runs to JSONL before trimming
+  if (entries.length > MAX_PERSISTED_RUNS) {
+    const evicted = entries.splice(0, entries.length - MAX_PERSISTED_RUNS);
+    archiveRuns(stateDir, evicted);
+  }
+
+  // Cap oversized result fields
+  for (const entry of entries) {
+    if (entry.result) {
+      const resultStr = JSON.stringify(entry.result);
+      if (resultStr.length > MAX_RESULT_JSON_BYTES) {
+        entry.result = { _truncated: true, summary: sanitizeString(entry.summary, 2000) };
+      }
+    }
   }
 
   writeJsonFile(path.join(ensureStateDir(stateDir), "runs.json"), {
@@ -119,6 +132,19 @@ export function savePersistedRuns(stateDir = DEFAULT_STATE_DIR, runs) {
     updatedAt: Date.now(),
     runs: entries,
   });
+}
+
+function archiveRuns(stateDir, evicted) {
+  if (!evicted.length) return;
+  try {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const archivePath = path.join(ensureStateDir(stateDir), `runs-archive-${month}.jsonl`);
+    const lines = evicted.map((run) => JSON.stringify(run)).join("\n") + "\n";
+    fs.appendFileSync(archivePath, lines, "utf8");
+  } catch {
+    // archival is best-effort
+  }
 }
 
 function serializeSession(entry) {

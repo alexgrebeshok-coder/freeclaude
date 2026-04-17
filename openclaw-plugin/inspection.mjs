@@ -173,6 +173,7 @@ export function summarizeRunForInspection(run) {
     finishedAtText: formatTimestamp(normalized.finishedAt),
     exitCode: normalized.exitCode,
     hasResult: Boolean(normalized.result),
+    delegationOutcome: normalized.result?.delegation?.outcome || "",
   };
 }
 
@@ -221,6 +222,7 @@ export function formatRunSummaryList(items, { title = "Recent FreeClaude runs", 
         );
       }
       if (item.parentRunId) lines.push(`  parent: ${shortId(item.parentRunId)}`);
+      if (item.delegationOutcome) lines.push(`  outcome: ${item.delegationOutcome}`);
       if (item.summary) lines.push(`  summary: ${item.summary}`);
       else if (item.task) lines.push(`  task: ${item.task}`);
       return lines.join("\n");

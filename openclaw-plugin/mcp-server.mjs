@@ -33,7 +33,7 @@ import {
   readPositiveNumber,
   readString,
   resolveResumeSessionId,
-  runWrappedSync,
+  runSync,
 } from "./freeclaude-backend.mjs";
 import {
   formatRunSummaryList,
@@ -41,6 +41,14 @@ import {
   readPersistedRunSummaries,
   readPersistedSessionSummaries,
 } from "./inspection.mjs";
+import { attachDelegationResult } from "./delegation-schema.mjs";
+import {
+  PM_RESOURCE,
+  PM_TOOLS,
+  buildProjectContextText,
+  handlePmToolCall,
+  isPmTool,
+} from "./bidi-mcp.mjs";
 
 // MCP Protocol constants
 const JSONRPC_VERSION = "2.0";
@@ -50,6 +58,8 @@ const MCP_PROTOCOL_VERSION = "2024-11-05";
 const FC_BINARY = process.env.FREECLAUDE_BINARY || "freeclaude";
 const FC_TIMEOUT_SECONDS = parseInt(process.env.FREECLAUDE_TIMEOUT || "120", 10);
 const FC_TIMEOUT = FC_TIMEOUT_SECONDS * 1000;
+const FC_EXECUTION_MODE =
+  readString(process.env.FREECLAUDE_EXECUTION_MODE).toLowerCase() === "wrapper" ? "wrapper" : "direct";
 const FC_WRAPPER =
   process.env.FREECLAUDE_WRAPPER ||
   path.join(homedir(), ".openclaw", "workspace", "tools", "freeclaude-run.sh");
@@ -65,7 +75,7 @@ const OC_MEMORY_TODAY_PATH = path.join(
 const OC_MEMORY_LONGTERM_PATH = path.join(homedir(), ".openclaw", "workspace", "MEMORY.md");
 
 // Tool definitions
-const TOOLS = [
+const CODE_TOOLS = [
   {
     name: "freeclaude_code",
     description: "Write, edit, or generate code using FreeClaude coding agent. Use for creating features, fixing bugs, writing scripts, modifying existing code across multiple files. FreeClaude has LSP integration, git awareness, and 40+ tools.",
@@ -240,12 +250,14 @@ const COMMON_TOOL_PROPERTIES = {
   }
 };
 
-for (const tool of TOOLS) {
+for (const tool of CODE_TOOLS) {
   tool.inputSchema.properties = {
     ...tool.inputSchema.properties,
     ...COMMON_TOOL_PROPERTIES
   };
 }
+
+const TOOLS = [...CODE_TOOLS, ...PM_TOOLS];
 
 // Resource definitions
 const RESOURCES = [
@@ -278,7 +290,8 @@ const RESOURCES = [
     name: "FreeClaude Sessions",
     description: "Stored OpenClaw session bindings to FreeClaude sessions",
     mimeType: "text/plain"
-  }
+   },
+   PM_RESOURCE
 ];
 
 function readOptionalFile(filePath) {
@@ -364,7 +377,8 @@ function runFreeClaude({
       (dir) => dir !== resolvedWorkdir,
     );
 
-    runWrappedSync({
+    runSync({
+      executionMode: FC_EXECUTION_MODE,
       wrapper: FC_WRAPPER,
       binary: FC_BINARY,
       stateDir: FC_STATE_DIR,
@@ -406,6 +420,7 @@ function getStatus() {
     configPath: FC_CONFIG_PATH,
     timeoutSeconds: FC_TIMEOUT_SECONDS,
     stateDir: FC_STATE_DIR,
+    executionMode: FC_EXECUTION_MODE,
   });
 }
 
@@ -444,9 +459,9 @@ async function handleRequest(msg) {
       });
       break;
       
-    case "tools/list":
-      sendResult(id, { tools: TOOLS });
-      break;
+      case "tools/list":
+        sendResult(id, { tools: TOOLS });
+        break;
       
     case "tools/call": {
       const toolName = params?.name;
@@ -455,6 +470,27 @@ async function handleRequest(msg) {
       const tool = TOOLS.find(t => t.name === toolName);
       if (!tool) {
         sendError(id, -32602, `Unknown tool: ${toolName}`);
+        return;
+      }
+
+      if (isPmTool(toolName)) {
+        try {
+          const payload = handlePmToolCall(toolName, args, {
+            stateDir: FC_STATE_DIR,
+            memoryTodayText: readOptionalFile(OC_MEMORY_TODAY_PATH),
+            memoryLongtermText: readOptionalFile(OC_MEMORY_LONGTERM_PATH),
+          });
+          sendResult(id, {
+            content: [{ type: "text", text: payload }],
+            structuredContent: JSON.parse(payload),
+          });
+        } catch (err) {
+          sendResult(id, {
+            content: [{ type: "text", text: `Error: ${err.message}` }],
+            structuredContent: { error: err.message },
+            isError: true,
+          });
+        }
         return;
       }
       
@@ -491,24 +527,36 @@ async function handleRequest(msg) {
           sessionKey: args.sessionKey,
           resume: args.resume,
           resumeSessionId: args.resumeSessionId,
-          forkSession: args.forkSession === true,
-          mode: modeMap[toolName] || "code"
+           forkSession: args.forkSession === true,
+           mode: modeMap[toolName] || "code"
+         });
+        const structuredResult = attachDelegationResult(result, {
+          mode: modeMap[toolName] || "code",
+          task: args.task,
+          workdir: args.workdir,
+          model: args.model,
         });
-        const text = result.output || result.summary || "FreeClaude completed.";
+        const text = structuredResult.output || structuredResult.summary || "FreeClaude completed.";
         sendResult(id, {
           content: [{ type: "text", text }],
-          structuredContent: result
+          structuredContent: structuredResult
         });
       } catch (err) {
+        const structuredError = attachDelegationResult({
+          type: "wrapper_result",
+          status: "error",
+          summary: `Error: ${err.message}`,
+          output: "",
+          error: err.message
+        }, {
+          mode: modeMap[toolName] || "code",
+          task: args.task,
+          workdir: args.workdir,
+          model: args.model,
+        });
         sendResult(id, {
           content: [{ type: "text", text: `Error: ${err.message}` }],
-          structuredContent: {
-            type: "wrapper_result",
-            status: "error",
-            summary: `Error: ${err.message}`,
-            output: "",
-            error: err.message
-          },
+          structuredContent: structuredError,
           isError: true
         });
       }
@@ -559,6 +607,35 @@ async function handleRequest(msg) {
             uri,
             mimeType: "text/plain",
             text: formatSessionSummaryList(readPersistedSessionSummaries(FC_STATE_DIR))
+          }]
+        });
+      } else if (uri?.startsWith("freeclaude://project-context")) {
+        let sessionKey = "";
+        let workdir = "";
+        let runLimit = 5;
+        try {
+          const parsed = new URL(uri);
+          sessionKey = readString(parsed.searchParams.get("sessionKey"));
+          workdir = readString(parsed.searchParams.get("workdir"));
+          const parsedRunLimit = Number.parseInt(readString(parsed.searchParams.get("runLimit")), 10);
+          if (Number.isFinite(parsedRunLimit) && parsedRunLimit > 0) {
+            runLimit = parsedRunLimit;
+          }
+        } catch {
+          // ignore malformed optional query parameters and fall back to defaults
+        }
+        sendResult(id, {
+          contents: [{
+            uri,
+            mimeType: "text/plain",
+            text: buildProjectContextText({
+              stateDir: FC_STATE_DIR,
+              sessionKey,
+              workdir,
+              runLimit,
+              memoryTodayText: readOptionalFile(OC_MEMORY_TODAY_PATH),
+              memoryLongtermText: readOptionalFile(OC_MEMORY_LONGTERM_PATH),
+            })
           }]
         });
       } else {

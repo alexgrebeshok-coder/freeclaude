@@ -83,7 +83,6 @@ export type FooterItem =
   | 'tmux'
   | 'bagel'
   | 'teams'
-  | 'bridge'
   | 'companion'
 
 export type AppState = DeepImmutable<{

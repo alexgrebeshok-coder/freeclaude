@@ -9,7 +9,11 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const USAGE_FILE = join(homedir(), '.freeclaude-usage.json')
+const DEFAULT_USAGE_FILE = join(homedir(), '.freeclaude-usage.json')
+
+function getUsageFilePath(): string {
+  return process.env.FREECLAUDE_USAGE_FILE?.trim() || DEFAULT_USAGE_FILE
+}
 
 export interface UsageEntry {
   timestamp: string
@@ -21,6 +25,7 @@ export interface UsageEntry {
   costUsd: number
   durationMs: number
   fallback: boolean
+  taskGoal?: 'coding' | 'chat' | 'analysis'
 }
 
 export interface UsageStats {
@@ -28,6 +33,11 @@ export interface UsageStats {
   totalTokens: number
   totalCostUsd: number
   byProvider: Record<string, {
+    requests: number
+    tokens: number
+    costUsd: number
+  }>
+  byTaskGoal: Record<string, {
     requests: number
     tokens: number
     costUsd: number
@@ -41,7 +51,7 @@ export interface UsageStats {
 export function logUsage(entry: UsageEntry): void {
   const line = JSON.stringify(entry) + '\n'
   try {
-    appendFileSync(USAGE_FILE, line, 'utf-8')
+    appendFileSync(getUsageFilePath(), line, 'utf-8')
   } catch {
     // Silent fail — usage tracking is non-critical
   }
@@ -51,12 +61,13 @@ export function logUsage(entry: UsageEntry): void {
  * Get aggregated stats for a time period.
  */
 export function getStats(days: number = 7): UsageStats {
-  if (!existsSync(USAGE_FILE)) {
+  const usageFile = getUsageFilePath()
+  if (!existsSync(usageFile)) {
     return emptyStats()
   }
 
   try {
-    const raw = readFileSync(USAGE_FILE, 'utf-8')
+    const raw = readFileSync(usageFile, 'utf-8')
     const lines = raw.trim().split('\n').filter(Boolean)
 
     const cutoff = new Date()
@@ -82,6 +93,19 @@ export function getStats(days: number = 7): UsageStats {
           stats.byProvider[entry.provider].requests++
           stats.byProvider[entry.provider].tokens += entry.totalTokens
           stats.byProvider[entry.provider].costUsd += entry.costUsd
+
+          if (entry.taskGoal) {
+            if (!stats.byTaskGoal[entry.taskGoal]) {
+              stats.byTaskGoal[entry.taskGoal] = {
+                requests: 0,
+                tokens: 0,
+                costUsd: 0,
+              }
+            }
+            stats.byTaskGoal[entry.taskGoal].requests++
+            stats.byTaskGoal[entry.taskGoal].tokens += entry.totalTokens
+            stats.byTaskGoal[entry.taskGoal].costUsd += entry.costUsd
+          }
 
           if (entry.timestamp < earliest) earliest = entry.timestamp
           if (entry.timestamp > latest) latest = entry.timestamp
@@ -121,17 +145,49 @@ export function formatStats(days: number = 7): string {
     `${'TOTAL'.padEnd(12)} | ${String(stats.totalRequests).padStart(8)} | ${formatNumber(stats.totalTokens).padStart(8)} | $${stats.totalCostUsd.toFixed(4)}`,
   )
 
+  if (Object.keys(stats.byTaskGoal).length > 0) {
+    lines.push('', 'Task goals', '━'.repeat(40), 'Goal         | Requests | Tokens   | Cost')
+    for (const [goal, data] of Object.entries(stats.byTaskGoal)) {
+      lines.push(
+        `${goal.padEnd(12)} | ${String(data.requests).padStart(8)} | ${formatNumber(data.tokens).padStart(8)} | $${data.costUsd.toFixed(4)}`,
+      )
+    }
+  }
+
+  const budgetAlert = getBudgetAlert(days, stats.totalCostUsd)
+  if (budgetAlert) {
+    lines.push('', budgetAlert)
+  }
+
   return lines.join('\n')
+}
+
+function getBudgetAlert(days: number, totalCostUsd: number): string {
+  const budgetValue =
+    days <= 1
+      ? process.env.FREECLAUDE_DAILY_BUDGET_USD
+      : days <= 7
+        ? process.env.FREECLAUDE_WEEKLY_BUDGET_USD
+        : undefined
+  const budgetUsd = Number.parseFloat(budgetValue ?? '')
+  if (!Number.isFinite(budgetUsd) || budgetUsd <= 0) {
+    return ''
+  }
+  if (totalCostUsd <= budgetUsd) {
+    return ''
+  }
+  return `Budget alert: spent $${totalCostUsd.toFixed(4)} over configured $${budgetUsd.toFixed(4)} for the last ${days} day(s).`
 }
 
 /**
  * Prune old entries (keep last N days).
  */
 export function pruneOldEntries(keepDays: number = 30): number {
-  if (!existsSync(USAGE_FILE)) return 0
+  const usageFile = getUsageFilePath()
+  if (!existsSync(usageFile)) return 0
 
   try {
-    const raw = readFileSync(USAGE_FILE, 'utf-8')
+    const raw = readFileSync(usageFile, 'utf-8')
     const lines = raw.trim().split('\n').filter(Boolean)
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - keepDays)
@@ -153,7 +209,7 @@ export function pruneOldEntries(keepDays: number = 30): number {
     }
 
     if (pruned > 0) {
-      writeFileSync(USAGE_FILE, kept.join('\n') + '\n', 'utf-8')
+      writeFileSync(usageFile, kept.join('\n') + '\n', 'utf-8')
     }
 
     return pruned
@@ -168,6 +224,7 @@ function emptyStats(): UsageStats {
     totalTokens: 0,
     totalCostUsd: 0,
     byProvider: {},
+    byTaskGoal: {},
     dateRange: { from: new Date().toISOString(), to: new Date().toISOString() },
   }
 }

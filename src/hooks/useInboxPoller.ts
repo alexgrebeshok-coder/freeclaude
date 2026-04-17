@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto'
 import { useCallback, useEffect, useRef } from 'react'
 import { useInterval } from 'usehooks-ts'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
-import { TEAMMATE_MESSAGE_TAG } from '../constants/xml.js'
 import { useTerminalNotification } from '../ink/useTerminalNotification.js'
 import { sendNotification } from '../services/notifier.js'
 import {
@@ -70,6 +69,10 @@ import {
   processMailboxPermissionResponse,
   processSandboxPermissionResponse,
 } from './useSwarmPermissionPoller.js'
+import {
+  buildQueuedInboxMessages,
+  formatInboxMessages,
+} from './useInboxPoller.helpers.js'
 
 /**
  * Get the agent name to poll for messages.
@@ -809,15 +812,7 @@ export function useInboxPoller({
 
     // Format messages with XML wrapper for Claude (include color if available)
     // Transform plan approval requests to include instructions for Claude
-    const formatted = regularMessages
-      .map(m => {
-        const colorAttr = m.color ? ` color="${m.color}"` : ''
-        const summaryAttr = m.summary ? ` summary="${m.summary}"` : ''
-        const messageContent = m.text
-
-        return `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${colorAttr}${summaryAttr}>\n${messageContent}\n</${TEAMMATE_MESSAGE_TAG}>`
-      })
-      .join('\n\n')
+    const formatted = formatInboxMessages(regularMessages)
 
     // Helper to queue messages in AppState for later delivery
     const queueMessages = () => {
@@ -826,15 +821,7 @@ export function useInboxPoller({
         inbox: {
           messages: [
             ...prev.inbox.messages,
-            ...regularMessages.map(m => ({
-              id: randomUUID(),
-              from: m.from,
-              text: m.text,
-              timestamp: m.timestamp,
-              status: 'pending' as const,
-              color: m.color,
-              summary: m.summary,
-            })),
+            ...buildQueuedInboxMessages(regularMessages),
           ],
         },
       }))
@@ -915,13 +902,7 @@ export function useInboxPoller({
     )
 
     // Format messages with XML wrapper for Claude (include color if available)
-    const formatted = pendingMessages
-      .map(m => {
-        const colorAttr = m.color ? ` color="${m.color}"` : ''
-        const summaryAttr = m.summary ? ` summary="${m.summary}"` : ''
-        return `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${colorAttr}${summaryAttr}>\n${m.text}\n</${TEAMMATE_MESSAGE_TAG}>`
-      })
-      .join('\n\n')
+    const formatted = formatInboxMessages(pendingMessages)
 
     // Try to submit - only clear messages if successful
     const submitted = onSubmitTeammateMessage(formatted)

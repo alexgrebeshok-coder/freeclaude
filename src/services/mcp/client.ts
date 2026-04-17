@@ -5,20 +5,7 @@ import type {
   MessageParam,
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import {
-  SSEClientTransport,
-  type SSEClientTransportOptions,
-} from '@modelcontextprotocol/sdk/client/sse.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import {
-  StreamableHTTPClientTransport,
-  type StreamableHTTPClientTransportOptions,
-} from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import {
-  createFetchWithInit,
-  type FetchLike,
-  type Transport,
-} from '@modelcontextprotocol/sdk/shared/transport.js'
 import {
   CallToolResultSchema,
   ElicitRequestSchema,
@@ -40,27 +27,18 @@ import mapValues from 'lodash-es/mapValues.js'
 import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
-import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
+import { getOriginalCwd } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
-import { getOauthConfig } from '../../constants/oauth.js'
 import { PRODUCT_URL } from '../../constants/product.js'
 import type { AppState } from '../../state/AppState.js'
 import {
   type Tool,
   type ToolCallProgress,
-  toolMatchesName,
 } from '../../Tool.js'
-import { ListMcpResourcesTool } from '../../tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { type MCPProgress, MCPTool } from '../../tools/MCPTool/MCPTool.js'
 import { createMcpAuthTool } from '../../tools/McpAuthTool/McpAuthTool.js'
-import { ReadMcpResourceTool } from '../../tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import { createAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
-} from '../../utils/auth.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
 import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -69,7 +47,6 @@ import {
   errorMessage,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../utils/errors.js'
-import { getMCPUserAgent } from '../../utils/http.js'
 import { maybeNotifyIDEConnected } from '../../utils/ide.js'
 import { maybeResizeAndDownsampleImageBuffer } from '../../utils/imageResizer.js'
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
@@ -85,17 +62,8 @@ import {
   mcpContentNeedsTruncation,
   truncateMcpContentIfNeeded,
 } from '../../utils/mcpValidation.js'
-import { WebSocketTransport } from '../../utils/mcpWebSocketTransport.js'
 import { memoizeWithLRU } from '../../utils/memoize.js'
-import { getWebSocketTLSOptions } from '../../utils/mtls.js'
-import {
-  getProxyFetchOptions,
-  getWebSocketProxyAgent,
-  getWebSocketProxyUrl,
-} from '../../utils/proxy.js'
 import { recursivelySanitizeUnicode } from '../../utils/sanitization.js'
-import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
-import { subprocessEnv } from '../../utils/subprocessEnv.js'
 import {
   isPersistError,
   persistToolResult,
@@ -109,8 +77,10 @@ import {
   runElicitationHooks,
   runElicitationResultHooks,
 } from './elicitationHandler.js'
+import { loadMcpConnectionCatalog } from './catalog.js'
 import { buildMcpToolName } from './mcpStringUtils.js'
 import { normalizeNameForMCP } from './normalization.js'
+import { createMcpTransport } from './transport.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -126,14 +96,9 @@ import type { AssistantMessage } from 'src/types/message.js'
 import { classifyMcpToolForCollapse } from '../../tools/MCPTool/classifyForCollapse.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
 import { sleep } from '../../utils/sleep.js'
-import {
-  ClaudeAuthProvider,
-  hasMcpDiscoveryButNoToken,
-  wrapFetchWithStepUpDetection,
-} from './auth.js'
+import { hasMcpDiscoveryButNoToken } from './auth.js'
 import { markClaudeAiMcpConnected } from './claudeai.js'
 import { getAllMcpConfigs, isMcpServerDisabled } from './config.js'
-import { getMcpServerHeaders } from './headersHelper.js'
 import { SdkControlClientTransport } from './SdkControlTransport.js'
 import type {
   ConnectedMCPServer,
@@ -360,92 +325,6 @@ function handleRemoteAuthFailure(
   return { name, type: 'needs-auth', config: serverRef }
 }
 
-/**
- * Fetch wrapper for claude.ai proxy connections. Attaches the OAuth bearer
- * token and retries once on 401 via handleOAuth401Error (force-refresh).
- *
- * The Anthropic API path has this retry (withRetry.ts, grove.ts) to handle
- * memoize-cache staleness and clock drift. Without the same here, a single
- * stale token mass-401s every claude.ai connector and sticks them all in the
- * 15-min needs-auth cache.
- */
-export function createClaudeAiProxyFetch(innerFetch: FetchLike): FetchLike {
-  return async (url, init) => {
-    const doRequest = async () => {
-      await checkAndRefreshOAuthTokenIfNeeded()
-      const currentTokens = getClaudeAIOAuthTokens()
-      if (!currentTokens) {
-        throw new Error('No claude.ai OAuth token available')
-      }
-      // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-      const headers = new Headers(init?.headers)
-      headers.set('Authorization', `Bearer ${currentTokens.accessToken}`)
-      const response = await innerFetch(url, { ...init, headers })
-      // Return the exact token that was sent. Reading getClaudeAIOAuthTokens()
-      // again after the request is wrong under concurrent 401s: another
-      // connector's handleOAuth401Error clears the memoize cache, so we'd read
-      // the NEW token from keychain, pass it to handleOAuth401Error, which
-      // finds same-as-keychain → returns false → skips retry. Same pattern as
-      // bridgeApi.ts withOAuthRetry (token passed as fn param).
-      return { response, sentToken: currentTokens.accessToken }
-    }
-
-    const { response, sentToken } = await doRequest()
-    if (response.status !== 401) {
-      return response
-    }
-    // handleOAuth401Error returns true only if the token actually changed
-    // (keychain had a newer one, or force-refresh succeeded). Gate retry on
-    // that — otherwise we double round-trip time for every connector whose
-    // downstream service genuinely needs auth (the common case: 30+ servers
-    // with "MCP server requires authentication but no OAuth token configured").
-    const tokenChanged = await handleOAuth401Error(sentToken).catch(() => false)
-    logEvent('tengu_mcp_claudeai_proxy_401', {
-      tokenChanged:
-        tokenChanged as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
-    if (!tokenChanged) {
-      // ELOCKED contention: another connector may have won the lockfile and refreshed — check if token changed underneath us
-      const now = getClaudeAIOAuthTokens()?.accessToken
-      if (!now || now === sentToken) {
-        return response
-      }
-    }
-    try {
-      return (await doRequest()).response
-    } catch {
-      // Retry itself failed (network error). Return the original 401 so the
-      // outer handler can classify it.
-      return response
-    }
-  }
-}
-
-// Minimal interface for WebSocket instances passed to mcpWebSocketTransport
-type WsClientLike = {
-  readonly readyState: number
-  close(): void
-  send(data: string): void
-}
-
-/**
- * Create a ws.WebSocket client with the MCP protocol.
- * Bun's ws shim types lack the 3-arg constructor (url, protocols, options)
- * that the real ws package supports, so we cast the constructor here.
- */
-async function createNodeWsClient(
-  url: string,
-  options: Record<string, unknown>,
-): Promise<WsClientLike> {
-  const wsModule = await import('ws')
-  const WS = wsModule.default as unknown as new (
-    url: string,
-    protocols: string[],
-    options: Record<string, unknown>,
-  ) => WsClientLike
-  return new WS(url, ['mcp'], options)
-}
-
 const IMAGE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -455,98 +334,6 @@ const IMAGE_MIME_TYPES = new Set([
 
 function getConnectionTimeoutMs(): number {
   return parseInt(process.env.MCP_TIMEOUT || '', 10) || 30000
-}
-
-/**
- * Default timeout for individual MCP requests (auth, tool calls, etc.)
- */
-const MCP_REQUEST_TIMEOUT_MS = 60000
-
-/**
- * MCP Streamable HTTP spec requires clients to advertise acceptance of both
- * JSON and SSE on every POST. Servers that enforce this strictly reject
- * requests without it (HTTP 406).
- * https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#sending-messages-to-the-server
- */
-const MCP_STREAMABLE_HTTP_ACCEPT = 'application/json, text/event-stream'
-
-/**
- * Wraps a fetch function to apply a fresh timeout signal to each request.
- * This avoids the bug where a single AbortSignal.timeout() created at connection
- * time becomes stale after 60 seconds, causing all subsequent requests to fail
- * immediately with "The operation timed out." Uses a 60-second timeout.
- *
- * Also ensures the Accept header required by the MCP Streamable HTTP spec is
- * present on POSTs. The MCP SDK sets this inside StreamableHTTPClientTransport.send(),
- * but it is attached to a Headers instance that passes through an object spread here,
- * and some runtimes/agents have been observed dropping it before it reaches the wire.
- * See https://github.com/anthropics/claude-agent-sdk-typescript/issues/202.
- * Normalizing here (the last wrapper before fetch()) guarantees it is sent.
- *
- * GET requests are excluded from the timeout since, for MCP transports, they are
- * long-lived SSE streams meant to stay open indefinitely. (Auth-related GETs use
- * a separate fetch wrapper with its own timeout in auth.ts.)
- *
- * @param baseFetch - The fetch function to wrap
- */
-export function wrapFetchWithTimeout(baseFetch: FetchLike): FetchLike {
-  return async (url: string | URL, init?: RequestInit) => {
-    const method = (init?.method ?? 'GET').toUpperCase()
-
-    // Skip timeout for GET requests - in MCP transports, these are long-lived SSE streams.
-    // (OAuth discovery GETs in auth.ts use a separate createAuthFetch() with its own timeout.)
-    if (method === 'GET') {
-      return baseFetch(url, init)
-    }
-
-    // Normalize headers and guarantee the Streamable-HTTP Accept value. new Headers()
-    // accepts HeadersInit | undefined and copies from plain objects, tuple arrays,
-    // and existing Headers instances — so whatever shape the SDK handed us, the
-    // Accept value survives the spread below as an own property of a concrete object.
-    // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-    const headers = new Headers(init?.headers)
-    if (!headers.has('accept')) {
-      headers.set('accept', MCP_STREAMABLE_HTTP_ACCEPT)
-    }
-
-    // Use setTimeout instead of AbortSignal.timeout() so we can clearTimeout on
-    // completion. AbortSignal.timeout's internal timer is only released when the
-    // signal is GC'd, which in Bun is lazy — ~2.4KB of native memory per request
-    // lingers for the full 60s even when the request completes in milliseconds.
-    const controller = new AbortController()
-    const timer = setTimeout(
-      c =>
-        c.abort(new DOMException('The operation timed out.', 'TimeoutError')),
-      MCP_REQUEST_TIMEOUT_MS,
-      controller,
-    )
-    timer.unref?.()
-
-    const parentSignal = init?.signal
-    const abort = () => controller.abort(parentSignal?.reason)
-    parentSignal?.addEventListener('abort', abort)
-    if (parentSignal?.aborted) {
-      controller.abort(parentSignal.reason)
-    }
-
-    const cleanup = () => {
-      clearTimeout(timer)
-      parentSignal?.removeEventListener('abort', abort)
-    }
-
-    try {
-      const response = await baseFetch(url, {
-        ...init,
-        headers,
-        signal: controller.signal,
-      })
-      cleanup()
-      return response
-    } catch (error) {
-      cleanup()
-      throw error
-    }
-  }
 }
 
 export function getMcpServerConnectionBatchSize(): number {
@@ -606,359 +393,11 @@ export const connectToServer = memoize(
     },
   ): Promise<MCPServerConnection> => {
     const connectStartTime = Date.now()
-    let inProcessServer:
-      | { connect(t: Transport): Promise<void>; close(): Promise<void> }
-      | undefined
+    let inProcessServer: { close(): Promise<void> } | undefined
     try {
-      let transport
-
-      // If we have the session ingress JWT, we will connect via the session ingress rather than
-      // to remote MCP's directly.
-      const sessionIngressToken = getSessionIngressAuthToken()
-
-      if (serverRef.type === 'sse') {
-        // Create an auth provider for this server
-        const authProvider = new ClaudeAuthProvider(name, serverRef)
-
-        // Get combined headers (static + dynamic)
-        const combinedHeaders = await getMcpServerHeaders(name, serverRef)
-
-        // Use the auth provider with SSEClientTransport
-        const transportOptions: SSEClientTransportOptions = {
-          authProvider,
-          // Use fresh timeout per request to avoid stale AbortSignal bug.
-          // Step-up detection wraps innermost so the 403 is seen before the
-          // SDK's handler calls auth() → tokens().
-          fetch: wrapFetchWithTimeout(
-            wrapFetchWithStepUpDetection(createFetchWithInit(), authProvider),
-          ),
-          requestInit: {
-            headers: {
-              'User-Agent': getMCPUserAgent(),
-              ...combinedHeaders,
-            },
-          },
-        }
-
-        // IMPORTANT: Always set eventSourceInit with a fetch that does NOT use the
-        // timeout wrapper. The EventSource connection is long-lived (stays open indefinitely
-        // to receive server-sent events), so applying a 60-second timeout would kill it.
-        // The timeout is only meant for individual API requests (POST, auth refresh), not
-        // the persistent SSE stream.
-        transportOptions.eventSourceInit = {
-          fetch: async (url: string | URL, init?: RequestInit) => {
-            // Get auth headers from the auth provider
-            const authHeaders: Record<string, string> = {}
-            const tokens = await authProvider.tokens()
-            if (tokens) {
-              authHeaders.Authorization = `Bearer ${tokens.access_token}`
-            }
-
-            const proxyOptions = getProxyFetchOptions()
-            // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-            return fetch(url, {
-              ...init,
-              ...proxyOptions,
-              headers: {
-                'User-Agent': getMCPUserAgent(),
-                ...authHeaders,
-                ...init?.headers,
-                ...combinedHeaders,
-                Accept: 'text/event-stream',
-              },
-            })
-          },
-        }
-
-        transport = new SSEClientTransport(
-          new URL(serverRef.url),
-          transportOptions,
-        )
-        logMCPDebug(name, `SSE transport initialized, awaiting connection`)
-      } else if (serverRef.type === 'sse-ide') {
-        logMCPDebug(name, `Setting up SSE-IDE transport to ${serverRef.url}`)
-        // IDE servers don't need authentication
-        // TODO: Use the auth token provided in the lockfile
-        const proxyOptions = getProxyFetchOptions()
-        const transportOptions: SSEClientTransportOptions =
-          proxyOptions.dispatcher
-            ? {
-              eventSourceInit: {
-                fetch: async (url: string | URL, init?: RequestInit) => {
-                  // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-                  return fetch(url, {
-                    ...init,
-                    ...proxyOptions,
-                    headers: {
-                      'User-Agent': getMCPUserAgent(),
-                      ...init?.headers,
-                    },
-                  })
-                },
-              },
-            }
-            : {}
-
-        transport = new SSEClientTransport(
-          new URL(serverRef.url),
-          Object.keys(transportOptions).length > 0
-            ? transportOptions
-            : undefined,
-        )
-      } else if (serverRef.type === 'ws-ide') {
-        const tlsOptions = getWebSocketTLSOptions()
-        const wsHeaders = {
-          'User-Agent': getMCPUserAgent(),
-          ...(serverRef.authToken && {
-            'X-Claude-Code-Ide-Authorization': serverRef.authToken,
-          }),
-        }
-
-        let wsClient: WsClientLike
-        if (typeof Bun !== 'undefined') {
-          // Bun's WebSocket supports headers/proxy/tls options but the DOM typings don't
-          // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-          wsClient = new globalThis.WebSocket(serverRef.url, {
-            protocols: ['mcp'],
-            headers: wsHeaders,
-            proxy: getWebSocketProxyUrl(serverRef.url),
-            tls: tlsOptions || undefined,
-          } as unknown as string[])
-        } else {
-          wsClient = await createNodeWsClient(serverRef.url, {
-            headers: wsHeaders,
-            agent: getWebSocketProxyAgent(serverRef.url),
-            ...(tlsOptions || {}),
-          })
-        }
-        transport = new WebSocketTransport(wsClient)
-      } else if (serverRef.type === 'ws') {
-        logMCPDebug(
-          name,
-          `Initializing WebSocket transport to ${serverRef.url}`,
-        )
-
-        const combinedHeaders = await getMcpServerHeaders(name, serverRef)
-
-        const tlsOptions = getWebSocketTLSOptions()
-        const wsHeaders = {
-          'User-Agent': getMCPUserAgent(),
-          ...(sessionIngressToken && {
-            Authorization: `Bearer ${sessionIngressToken}`,
-          }),
-          ...combinedHeaders,
-        }
-
-        // Redact sensitive headers before logging
-        const wsHeadersForLogging = mapValues(wsHeaders, (value, key) =>
-          key.toLowerCase() === 'authorization' ? '[REDACTED]' : value,
-        )
-
-        logMCPDebug(
-          name,
-          `WebSocket transport options: ${jsonStringify({
-            url: serverRef.url,
-            headers: wsHeadersForLogging,
-            hasSessionAuth: !!sessionIngressToken,
-          })}`,
-        )
-
-        let wsClient: WsClientLike
-        if (typeof Bun !== 'undefined') {
-          // Bun's WebSocket supports headers/proxy/tls options but the DOM typings don't
-          // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-          wsClient = new globalThis.WebSocket(serverRef.url, {
-            protocols: ['mcp'],
-            headers: wsHeaders,
-            proxy: getWebSocketProxyUrl(serverRef.url),
-            tls: tlsOptions || undefined,
-          } as unknown as string[])
-        } else {
-          wsClient = await createNodeWsClient(serverRef.url, {
-            headers: wsHeaders,
-            agent: getWebSocketProxyAgent(serverRef.url),
-            ...(tlsOptions || {}),
-          })
-        }
-        transport = new WebSocketTransport(wsClient)
-      } else if (serverRef.type === 'http') {
-        logMCPDebug(name, `Initializing HTTP transport to ${serverRef.url}`)
-        logMCPDebug(
-          name,
-          `Node version: ${process.version}, Platform: ${process.platform}`,
-        )
-        logMCPDebug(
-          name,
-          `Environment: ${jsonStringify({
-            NODE_OPTIONS: process.env.NODE_OPTIONS || 'not set',
-            UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || 'default',
-            HTTP_PROXY: process.env.HTTP_PROXY || 'not set',
-            HTTPS_PROXY: process.env.HTTPS_PROXY || 'not set',
-            NO_PROXY: process.env.NO_PROXY || 'not set',
-          })}`,
-        )
-
-        // Create an auth provider for this server
-        const authProvider = new ClaudeAuthProvider(name, serverRef)
-
-        // Get combined headers (static + dynamic)
-        const combinedHeaders = await getMcpServerHeaders(name, serverRef)
-
-        // Check if this server has stored OAuth tokens. If so, the SDK's
-        // authProvider will set Authorization — don't override with the
-        // session ingress token (SDK merges requestInit AFTER authProvider).
-        // CCR proxy URLs (ccr_shttp_mcp) have no stored OAuth, so they still
-        // get the ingress token. See PR #24454 discussion.
-        const hasOAuthTokens = !!(await authProvider.tokens())
-
-        // Use the auth provider with StreamableHTTPClientTransport
-        const proxyOptions = getProxyFetchOptions()
-        logMCPDebug(
-          name,
-          `Proxy options: ${proxyOptions.dispatcher ? 'custom dispatcher' : 'default'}`,
-        )
-
-        const transportOptions: StreamableHTTPClientTransportOptions = {
-          authProvider,
-          // Use fresh timeout per request to avoid stale AbortSignal bug.
-          // Step-up detection wraps innermost so the 403 is seen before the
-          // SDK's handler calls auth() → tokens().
-          fetch: wrapFetchWithTimeout(
-            wrapFetchWithStepUpDetection(createFetchWithInit(), authProvider),
-          ),
-          requestInit: {
-            ...proxyOptions,
-            headers: {
-              'User-Agent': getMCPUserAgent(),
-              ...(sessionIngressToken &&
-                !hasOAuthTokens && {
-                Authorization: `Bearer ${sessionIngressToken}`,
-              }),
-              ...combinedHeaders,
-            },
-          },
-        }
-
-        // Redact sensitive headers before logging
-        const headersForLogging = transportOptions.requestInit?.headers
-          ? mapValues(
-            transportOptions.requestInit.headers as Record<string, string>,
-            (value, key) =>
-              key.toLowerCase() === 'authorization' ? '[REDACTED]' : value,
-          )
-          : undefined
-
-        logMCPDebug(
-          name,
-          `HTTP transport options: ${jsonStringify({
-            url: serverRef.url,
-            headers: headersForLogging,
-            hasAuthProvider: !!authProvider,
-            timeoutMs: MCP_REQUEST_TIMEOUT_MS,
-          })}`,
-        )
-
-        transport = new StreamableHTTPClientTransport(
-          new URL(serverRef.url),
-          transportOptions,
-        )
-        logMCPDebug(name, `HTTP transport created successfully`)
-      } else if (serverRef.type === 'sdk') {
-        throw new Error('SDK servers should be handled in print.ts')
-      } else if (serverRef.type === 'claudeai-proxy') {
-        logMCPDebug(
-          name,
-          `Initializing claude.ai proxy transport for server ${serverRef.id}`,
-        )
-
-        const tokens = getClaudeAIOAuthTokens()
-        if (!tokens) {
-          throw new Error('No claude.ai OAuth token found')
-        }
-
-        const oauthConfig = getOauthConfig()
-        const proxyUrl = `${oauthConfig.MCP_PROXY_URL}${oauthConfig.MCP_PROXY_PATH.replace('{server_id}', serverRef.id)}`
-
-        logMCPDebug(name, `Using claude.ai proxy at ${proxyUrl}`)
-
-        // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-        const fetchWithAuth = createClaudeAiProxyFetch(globalThis.fetch)
-
-        const proxyOptions = getProxyFetchOptions()
-        const transportOptions: StreamableHTTPClientTransportOptions = {
-          // Wrap fetchWithAuth with fresh timeout per request
-          fetch: wrapFetchWithTimeout(fetchWithAuth),
-          requestInit: {
-            ...proxyOptions,
-            headers: {
-              'User-Agent': getMCPUserAgent(),
-              'X-Mcp-Client-Session-Id': getSessionId(),
-            },
-          },
-        }
-
-        transport = new StreamableHTTPClientTransport(
-          new URL(proxyUrl),
-          transportOptions,
-        )
-        logMCPDebug(name, `claude.ai proxy transport created successfully`)
-      } else if (
-        (serverRef.type === 'stdio' || !serverRef.type) &&
-        isClaudeInChromeMCPServer(name)
-      ) {
-        // Run the Chrome MCP server in-process to avoid spawning a ~325 MB subprocess
-        const { createChromeContext } = await import(
-          '../../utils/claudeInChrome/mcpServer.js'
-        )
-        const { createClaudeForChromeMcpServer } = await import(
-          '@ant/claude-for-chrome-mcp'
-        )
-        const { createLinkedTransportPair } = await import(
-          './InProcessTransport.js'
-        )
-        const context = createChromeContext(serverRef.env)
-        inProcessServer = createClaudeForChromeMcpServer(context)
-        const [clientTransport, serverTransport] = createLinkedTransportPair()
-        await inProcessServer.connect(serverTransport)
-        transport = clientTransport
-        logMCPDebug(name, `In-process Chrome MCP server started`)
-      } else if (
-        feature('CHICAGO_MCP') &&
-        (serverRef.type === 'stdio' || !serverRef.type) &&
-        isComputerUseMCPServer!(name)
-      ) {
-        // Run the Computer Use MCP server in-process — same rationale as
-        // Chrome above. The package's CallTool handler is a stub; real
-        // dispatch goes through wrapper.tsx's .call() override.
-        const { createComputerUseMcpServerForCli } = await import(
-          '../../utils/computerUse/mcpServer.js'
-        )
-        const { createLinkedTransportPair } = await import(
-          './InProcessTransport.js'
-        )
-        inProcessServer = await createComputerUseMcpServerForCli()
-        const [clientTransport, serverTransport] = createLinkedTransportPair()
-        await inProcessServer.connect(serverTransport)
-        transport = clientTransport
-        logMCPDebug(name, `In-process Computer Use MCP server started`)
-      } else if (serverRef.type === 'stdio' || !serverRef.type) {
-        const finalCommand =
-          process.env.CLAUDE_CODE_SHELL_PREFIX || serverRef.command
-        const finalArgs = process.env.CLAUDE_CODE_SHELL_PREFIX
-          ? [[serverRef.command, ...serverRef.args].join(' ')]
-          : serverRef.args
-        transport = new StdioClientTransport({
-          command: finalCommand,
-          args: finalArgs,
-          env: {
-            ...subprocessEnv(),
-            ...serverRef.env,
-          } as Record<string, string>,
-          stderr: 'pipe', // prevents error output from the MCP server from printing to the UI
-        })
-      } else {
-        throw new Error(`Unsupported server type: ${serverRef.type}`)
-      }
+      const createdTransport = await createMcpTransport(name, serverRef)
+      const transport = createdTransport.transport
+      inProcessServer = createdTransport.inProcessServer
 
       // Set up stderr logging for stdio transport before connecting in case there are any stderr
       // outputs emitted during the connection start (this can be useful for debugging failed connections).
@@ -2166,35 +1605,20 @@ export async function reconnectMcpServerImpl(
       markClaudeAiMcpConnected(name)
     }
 
-    const supportsResources = !!client.capabilities?.resources
-
-    const [tools, mcpCommands, mcpSkills, resources] = await Promise.all([
-      fetchToolsForClient(client),
-      fetchCommandsForClient(client),
-      feature('MCP_SKILLS') && supportsResources
-        ? fetchMcpSkillsForClient!(client)
-        : Promise.resolve([]),
-      supportsResources ? fetchResourcesForClient(client) : Promise.resolve([]),
-    ])
-    const commands = [...mcpCommands, ...mcpSkills]
-
-    // Check if we need to add resource tools
-    const resourceTools: Tool[] = []
-    if (supportsResources) {
-      // Only add resource tools if no other server has them
-      const hasResourceTools = [ListMcpResourcesTool, ReadMcpResourceTool].some(
-        tool => tools.some(t => toolMatchesName(t, tool.name)),
-      )
-      if (!hasResourceTools) {
-        resourceTools.push(ListMcpResourcesTool, ReadMcpResourceTool)
-      }
-    }
+    const catalog = await loadMcpConnectionCatalog({
+      client,
+      fetchTools: fetchToolsForClient,
+      fetchCommands: fetchCommandsForClient,
+      fetchResources: fetchResourcesForClient,
+      fetchSkills: feature('MCP_SKILLS') ? fetchMcpSkillsForClient! : undefined,
+      includeSharedResourceTools: true,
+    })
 
     return {
       client,
-      tools: [...tools, ...resourceTools],
-      commands,
-      resources: resources.length > 0 ? resources : undefined,
+      tools: catalog.tools,
+      commands: catalog.commands,
+      resources: catalog.resources,
     }
   } catch (error) {
     // Handle errors gracefully - connection might have closed during fetch
@@ -2339,35 +1763,22 @@ export async function getMcpToolsCommandsAndResources(
         markClaudeAiMcpConnected(name)
       }
 
-      const supportsResources = !!client.capabilities?.resources
-
-      const [tools, mcpCommands, mcpSkills, resources] = await Promise.all([
-        fetchToolsForClient(client),
-        fetchCommandsForClient(client),
-        // Discover skills from skill:// resources
-        feature('MCP_SKILLS') && supportsResources
-          ? fetchMcpSkillsForClient!(client)
-          : Promise.resolve([]),
-        // Fetch resources if supported
-        supportsResources
-          ? fetchResourcesForClient(client)
-          : Promise.resolve([]),
-      ])
-      const commands = [...mcpCommands, ...mcpSkills]
-
-      // If this server resources and we haven't added resource tools yet,
-      // include our resource tools with this client's tools
-      const resourceTools: Tool[] = []
-      if (supportsResources && !resourceToolsAdded) {
-        resourceToolsAdded = true
-        resourceTools.push(ListMcpResourcesTool, ReadMcpResourceTool)
-      }
+      const catalog = await loadMcpConnectionCatalog({
+        client,
+        fetchTools: fetchToolsForClient,
+        fetchCommands: fetchCommandsForClient,
+        fetchResources: fetchResourcesForClient,
+        fetchSkills: feature('MCP_SKILLS') ? fetchMcpSkillsForClient! : undefined,
+        includeSharedResourceTools: !resourceToolsAdded,
+      })
+      resourceToolsAdded =
+        resourceToolsAdded || catalog.addedSharedResourceTools
 
       onConnectionAttempt({
         client,
-        tools: [...tools, ...resourceTools],
-        commands,
-        resources: resources.length > 0 ? resources : undefined,
+        tools: catalog.tools,
+        commands: catalog.commands,
+        resources: catalog.resources,
       })
     } catch (error) {
       // Handle errors gracefully - connection might have closed during fetch

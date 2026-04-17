@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, describe } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createOpenAIShimClient } from './openaiShim.ts'
+import { createOpenAIShimClient, type OpenAIShimClient } from './openaiShim.ts'
 
 type FetchType = typeof globalThis.fetch
 
@@ -15,19 +15,6 @@ const originalEnv = {
 const originalFetch = globalThis.fetch
 let testConfigDir = ''
 let testConfigPath = ''
-
-type OpenAIShimClient = {
-  beta: {
-    messages: {
-      create: (
-        params: Record<string, unknown>,
-        options?: Record<string, unknown>,
-      ) => Promise<unknown> & {
-        withResponse: () => Promise<{ data: AsyncIterable<Record<string, unknown>> }>
-      }
-    }
-  }
-}
 
 function makeSseResponse(lines: string[]): Response {
   const encoder = new TextEncoder()
@@ -326,4 +313,95 @@ test('preserves Gemini tool call extra_content from streaming chunks', async () 
       },
     },
   })
+})
+
+test('rejects malformed non-streaming OpenAI payloads', async () => {
+  globalThis.fetch = (async () => {
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-bad',
+        model: 'fake-model',
+        choices: 'not-an-array',
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({})
+
+  await expect(
+    client.beta.messages.create({
+      model: 'fake-model',
+      system: 'test system',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).rejects.toThrow('[FreeClaude] Invalid OpenAI response payload')
+})
+
+test('ignores malformed streaming chunks and continues reading valid ones', async () => {
+  globalThis.fetch = (async () => {
+    const chunks = [
+      'data: {"id":"bad","choices":"oops"}\n\n',
+      ...makeStreamChunks([
+        {
+          id: 'chatcmpl-1',
+          object: 'chat.completion.chunk',
+          model: 'fake-model',
+          choices: [
+            {
+              index: 0,
+              delta: { role: 'assistant', content: 'hello after bad chunk' },
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: 'chatcmpl-1',
+          object: 'chat.completion.chunk',
+          model: 'fake-model',
+          choices: [
+            {
+              index: 0,
+              delta: {},
+              finish_reason: 'stop',
+            },
+          ],
+        },
+      ]),
+    ]
+
+    return makeSseResponse(chunks)
+  }) as FetchType
+
+  const client = createOpenAIShimClient({})
+  const result = await client.beta.messages
+    .create({
+      model: 'fake-model',
+      system: 'test system',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: true,
+    })
+    .withResponse()
+
+  const events: Array<Record<string, unknown>> = []
+  for await (const event of result.data as AsyncIterable<Record<string, unknown>>) {
+    events.push(event)
+  }
+
+  expect(
+    events.some(
+      event =>
+        event.type === 'content_block_delta' &&
+        typeof event.delta === 'object' &&
+        event.delta !== null &&
+        (event.delta as Record<string, unknown>).text === 'hello after bad chunk',
+    ),
+  ).toBe(true)
 })

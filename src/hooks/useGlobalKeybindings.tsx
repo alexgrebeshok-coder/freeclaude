@@ -14,6 +14,7 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { useAppState, useSetAppState } from '../state/AppState.js';
 import { count } from '../utils/array.js';
 import { getTerminalPanel } from '../utils/terminalPanel.js';
+import { getNextExpandedView } from './useGlobalKeybindings.helpers.js';
 type Props = {
   screen: Screen;
   setScreen: React.Dispatch<React.SetStateAction<Screen>>;
@@ -59,30 +60,9 @@ export function GlobalKeybindingHandlers({
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../tasks/InProcessTeammateTask/InProcessTeammateTask.js') as typeof import('../tasks/InProcessTeammateTask/InProcessTeammateTask.js');
       const hasTeammates = count(getAllInProcessTeammateTasks(prev.tasks), t => t.status === 'running') > 0;
-      if (hasTeammates) {
-        // Both exist: none → tasks → teammates → none
-        switch (prev.expandedView) {
-          case 'none':
-            return {
-              ...prev,
-              expandedView: 'tasks' as const
-            };
-          case 'tasks':
-            return {
-              ...prev,
-              expandedView: 'teammates' as const
-            };
-          case 'teammates':
-            return {
-              ...prev,
-              expandedView: 'none' as const
-            };
-        }
-      }
-      // Only tasks: none ↔ tasks
       return {
         ...prev,
-        expandedView: prev.expandedView === 'tasks' ? 'none' as const : 'tasks' as const
+        expandedView: getNextExpandedView(prev.expandedView, hasTeammates)
       };
     });
   }, [expandedView, setAppState]);

@@ -72,6 +72,30 @@ export interface AutoRememberResult {
   saved?: boolean
 }
 
+function buildRememberOptions(key: string, value: string) {
+  const normalizedValue = value.toLowerCase()
+  const projectScoped =
+    /(?:this project|for this project|in this repo|в этом проекте|для этого проекта|в этом репозитории)/i.test(
+      value,
+    ) ||
+    normalizedValue.includes('repo') ||
+    normalizedValue.includes('repository') ||
+    normalizedValue.includes('codebase') ||
+    normalizedValue.includes('проект')
+
+  let category: 'profile' | 'preference' | 'decision' | 'general' = 'general'
+  if (key === 'user-name') category = 'profile'
+  else if (key.startsWith('pref-')) category = 'preference'
+  else if (projectScoped) category = 'decision'
+
+  return {
+    tags: ['auto'],
+    scope: projectScoped ? 'project' : 'global',
+    category,
+    ttlDays: projectScoped ? 90 : undefined,
+  } as const
+}
+
 /**
  * Check a user message for auto-remember triggers.
  * Returns what was detected and saved (if anything).
@@ -83,10 +107,10 @@ export function detectAndRemember(userMessage: string): AutoRememberResult {
   for (const { pattern, extract } of REMEMBER_PATTERNS) {
     const match = trimmed.match(pattern)
     if (match) {
-      const result = extract(match)
-      if (result && result.key && result.value) {
-        // Save to memory store
-        remember(result.key, result.value, ['auto'])
+        const result = extract(match)
+        if (result && result.key && result.value) {
+          // Save to memory store
+          remember(result.key, result.value, buildRememberOptions(result.key, result.value))
 
         // Non-blocking: index for semantic + GBrain
         indexMemory(result.key, result.value).catch(() => {})

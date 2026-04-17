@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react'
 import { useNotifications } from '../context/notifications.js'
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js'
 import { hasImageInClipboard } from '../utils/imagePaste.js'
+import {
+  isClipboardHintOnCooldown,
+  shouldCheckClipboardImageHint,
+} from './useClipboardImageHint.helpers.js'
 
 const NOTIFICATION_KEY = 'clipboard-image-hint'
 // Small debounce to batch rapid focus changes
@@ -30,7 +34,7 @@ export function useClipboardImageHint(
     const wasFocused = lastFocusedRef.current
     lastFocusedRef.current = isFocused
 
-    if (!enabled || !isFocused || wasFocused) {
+    if (!shouldCheckClipboardImageHint({ enabled, isFocused, wasFocused })) {
       return
     }
 
@@ -46,7 +50,13 @@ export function useClipboardImageHint(
 
         // Check cooldown to avoid spamming the user
         const now = Date.now()
-        if (now - lastHintTimeRef.current < HINT_COOLDOWN_MS) {
+        if (
+          isClipboardHintOnCooldown(
+            lastHintTimeRef.current,
+            now,
+            HINT_COOLDOWN_MS,
+          )
+        ) {
           return
         }
 

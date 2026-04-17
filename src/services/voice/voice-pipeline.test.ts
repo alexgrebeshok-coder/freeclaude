@@ -136,13 +136,85 @@ describe('speech-to-text module', () => {
   })
 })
 
+describe('local voice mode hardening', () => {
+  test('enforces a maximum local audio buffer size', async () => {
+    const { connectLocalVoiceMode } = await import('./voiceMode.ts')
+    const events = {
+      errors: [] as string[],
+      closed: 0,
+    }
+
+    const connection = await connectLocalVoiceMode(
+      {
+        onTranscript() {},
+        onError(error) {
+          events.errors.push(error)
+        },
+        onClose() {
+          events.closed += 1
+        },
+        onReady() {},
+      },
+      {
+        maxBufferBytes: 4,
+        transcribeAudio: async () => '',
+      },
+    )
+
+    expect(connection).not.toBeNull()
+    connection!.send(Buffer.from([1, 2, 3]))
+    connection!.send(Buffer.from([4, 5]))
+
+    expect(events.errors[0]).toContain('buffer limit')
+    expect(events.closed).toBe(1)
+    expect(connection!.isConnected()).toBe(false)
+  })
+
+  test('times out stuck local transcription attempts', async () => {
+    const { connectLocalVoiceMode } = await import('./voiceMode.ts')
+    const events = {
+      errors: [] as string[],
+      closed: 0,
+    }
+
+    const connection = await connectLocalVoiceMode(
+      {
+        onTranscript() {},
+        onError(error) {
+          events.errors.push(error)
+        },
+        onClose() {
+          events.closed += 1
+        },
+        onReady() {},
+      },
+      {
+        maxTranscribeMs: 10,
+        transcribeAudio: async () =>
+          await new Promise<string>(() => {}),
+      },
+    )
+
+    connection!.send(Buffer.from([1, 2, 3, 4]))
+    const result = await connection!.finalize()
+
+    expect(result).toBe('safety_timeout')
+    expect(events.errors[0]).toContain('timed out')
+    expect(events.closed).toBe(1)
+  })
+})
+
 // ─── Test 6: Bundle version ─────────────────────────────────────────
 
 describe('bundle: version truth', () => {
-  test('cli.mjs contains 3.2.2', () => {
+  test('cli.mjs contains current package version', () => {
     const cliPath = join(import.meta.dir, '../../../dist/cli.mjs')
+    const packageJsonPath = join(import.meta.dir, '../../../package.json')
     if (!existsSync(cliPath)) return
     const cli = readFileSync(cliPath, 'utf8')
-    expect(cli).toContain('3.2.2')
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+      version?: string
+    }
+    expect(cli).toContain(packageJson.version ?? '')
   })
 })

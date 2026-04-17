@@ -71,4 +71,18 @@ describe('Auto-Remember', () => {
     const entries = require('./memoryStore.ts').listAll()
     expect(entries.length).toBeGreaterThan(0)
   })
+
+  test('project decisions are remembered as project-scoped entries', async () => {
+    process.env.FREECLAUDE_MEMORY_PROJECT = 'repo-a'
+    const { detectAndRemember } = await import('./autoRemember.ts')
+    const { recall } = await import('./memoryStore.ts')
+
+    const result = detectAndRemember('remember that in this project we always use Bun for scripts')
+    expect(result.detected).toBe(true)
+
+    const entry = recall(result.key!)
+    expect(entry?.scope).toBe('project')
+    expect(entry?.category).toBe('decision')
+    delete process.env.FREECLAUDE_MEMORY_PROJECT
+  })
 })
