@@ -32,6 +32,10 @@ import {
 import {
   FallbackChain,
   classifyRoutingGoal,
+  describeProviderError,
+  isNetworkError,
+  isProviderRestrictionError,
+  normalizeProviderError,
   shouldFallback,
 } from './fallbackChain.js'
 import {
@@ -988,11 +992,16 @@ class OpenAIShimMessages {
       }
 
       let lastError: Error | null = null
-      const maxAttempts = hasExplicitModel ? 1 : chain.getProviders().length
+      let useFallbackProviderModel = false
+      const maxAttempts = chain.getProviders().length
       let startTime = 0
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (!currentProvider) break
+        const modelToUse =
+          !useFallbackProviderModel && explicitModel
+            ? explicitModel
+            : currentProvider.model
 
         // Override env vars for this provider
         const prevApiKey = process.env.OPENAI_API_KEY
@@ -1001,12 +1010,12 @@ class OpenAIShimMessages {
 
         process.env.OPENAI_API_KEY = currentProvider.apiKey
         process.env.OPENAI_BASE_URL = currentProvider.baseUrl
-        process.env.OPENAI_MODEL = explicitModel || currentProvider.model
+        process.env.OPENAI_MODEL = modelToUse
 
         try {
-          const startTime = Date.now()
+          startTime = Date.now()
           const result = await self._createSingle(
-            { ...params, model: explicitModel || currentProvider.model },
+            { ...params, model: modelToUse },
             options,
           )
           const durationMs = Date.now() - startTime
@@ -1041,7 +1050,7 @@ class OpenAIShimMessages {
           logUsage({
             timestamp: new Date().toISOString(),
             provider: currentProvider.name,
-            model: explicitModel || currentProvider.model,
+            model: modelToUse,
             taskGoal: routingGoal,
             promptTokens,
             completionTokens,
@@ -1051,7 +1060,7 @@ class OpenAIShimMessages {
             fallback: attempt > 0,
           })
 
-          const providerDescriptor = `${currentProvider.name}/${explicitModel || currentProvider.model}`
+          const providerDescriptor = `${currentProvider.name}/${modelToUse}`
           console.error(
             `[FreeClaude] ${promptTokens + completionTokens} tokens (prompt: ${promptTokens}, completion: ${completionTokens}) | ${providerDescriptor} | $${costUsd.toFixed(4)}${attempt > 0 ? ' (fallback)' : ''} | ${durationMs}ms`,
           )
@@ -1083,32 +1092,39 @@ class OpenAIShimMessages {
           return result
         } catch (error) {
           self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
-          lastError = error as Error
 
           const match = (error as Error).message?.match(/OpenAI API error (\d+):/)
           const statusCode = match ? parseInt(match[1], 10) : 0
+          const normalizedError = normalizeProviderError(error as Error, statusCode)
+          lastError = normalizedError
+          const canFallbackPinnedModel =
+            !useFallbackProviderModel &&
+            hasExplicitModel &&
+            isProviderRestrictionError(error as Error)
 
-          // Import here to avoid circular deps
-          const { isNetworkError } = await import('./fallbackChain.js')
-
-          if (shouldFallback(statusCode) || isNetworkError(error as Error)) {
-            const reason = statusCode > 0
-              ? `HTTP ${statusCode}`
-              : (error as Error).message?.slice(0, 60)
-            if (hasExplicitModel) {
+          if (shouldFallback(statusCode, error as Error) || isNetworkError(error as Error)) {
+            const reason = describeProviderError(error as Error, statusCode)
+            if (hasExplicitModel && !useFallbackProviderModel && !canFallbackPinnedModel) {
               console.error(
                 `[FreeClaude] ${currentProvider.name} failed (${reason}), not switching providers because --model is pinned`,
               )
-              throw error
+              throw normalizedError
             }
-            console.error(
-              `[FreeClaude] ${currentProvider.name} failed (${reason}), switching...`,
-            )
+            if (canFallbackPinnedModel) {
+              useFallbackProviderModel = true
+              console.error(
+                `[FreeClaude] ${currentProvider.name} failed (${reason}), switching to the next configured provider/model...`,
+              )
+            } else {
+              console.error(
+                `[FreeClaude] ${currentProvider.name} failed (${reason}), switching...`,
+              )
+            }
             recordLatency(currentProvider.name, Date.now() - startTime, false)
             chain.markDown(currentProvider.name)
             currentProvider = chain.getNext(currentProvider.name, routingGoal)
           } else {
-            throw error
+            throw normalizedError
           }
         }
       }
@@ -1144,12 +1160,13 @@ class OpenAIShimMessages {
     const promise = (async () => {
       const request = resolveProviderRequest({ model: params.model })
       const response = await self._doRequest(request, params, options)
+      const runtimeModel = process.env.OPENAI_MODEL?.trim() || request.resolvedModel
 
       if (params.stream) {
         return new OpenAIShimStream(
           request.transport === 'codex_responses'
-            ? codexStreamToAnthropic(response, request.resolvedModel)
-            : openaiStreamToAnthropic(response, request.resolvedModel),
+            ? codexStreamToAnthropic(response, runtimeModel)
+            : openaiStreamToAnthropic(response, runtimeModel),
         )
       }
 
@@ -1157,12 +1174,12 @@ class OpenAIShimMessages {
         const data = await collectCodexCompletedResponse(response)
         return convertCodexResponseToAnthropicMessage(
           data,
-          request.resolvedModel,
+          runtimeModel,
         )
       }
 
       const data = parseNonStreamingResponse(await response.json())
-      return self._convertNonStreamingResponse(data, request.resolvedModel)
+      return self._convertNonStreamingResponse(data, runtimeModel)
     })()
 
     return attachWithResponse(promise)
@@ -1372,7 +1389,7 @@ class OpenAIShimMessages {
       type: 'message',
       role: 'assistant',
       content,
-      model: data.model ?? model,
+      model,
       stop_reason: stopReason,
       stop_sequence: null,
       usage: {

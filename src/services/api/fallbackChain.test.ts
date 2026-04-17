@@ -8,6 +8,7 @@ import {
   classifyRoutingGoal,
   shouldFallback,
   isNetworkError,
+  isProviderRestrictionError,
   resolveApiKey,
 } from './fallbackChain.ts'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -77,9 +78,33 @@ describe('shouldFallback', () => {
   test('triggers on 502 Bad Gateway', () => expect(shouldFallback(502)).toBe(true))
   test('triggers on 503 Service Unavailable', () => expect(shouldFallback(503)).toBe(true))
   test('triggers on 504 Gateway Timeout', () => expect(shouldFallback(504)).toBe(true))
+  test('triggers on 403 provider geo/TOS restriction', () => expect(
+    shouldFallback(
+      403,
+      new Error(
+        'OpenAI API error 403: {"error":{"message":"The request is prohibited due to a violation of provider Terms Of Service."}}',
+      ),
+    ),
+  ).toBe(true))
   test('does NOT trigger on 400 Bad Request', () => expect(shouldFallback(400)).toBe(false))
   test('does NOT trigger on 200 OK', () => expect(shouldFallback(200)).toBe(false))
-  test('does NOT trigger on 403 Forbidden', () => expect(shouldFallback(403)).toBe(false))
+  test('does NOT trigger on auth 403 Forbidden', () => expect(
+    shouldFallback(403, new Error('OpenAI API error 403: forbidden')),
+  ).toBe(false))
+})
+
+describe('isProviderRestrictionError', () => {
+  test('detects OpenRouter Terms of Service restriction message', () => expect(
+    isProviderRestrictionError(
+      new Error(
+        'OpenAI API error 403: {"error":{"message":"The request is prohibited due to a violation of provider Terms Of Service."}}',
+      ),
+    ),
+  ).toBe(true))
+
+  test('does not match generic 403 errors', () => expect(
+    isProviderRestrictionError(new Error('OpenAI API error 403: forbidden')),
+  ).toBe(false))
 })
 
 // ---------------------------------------------------------------------------

@@ -140,7 +140,12 @@ function boxRow(content: string, width: number, rawLen: number): string {
 
 export function printStartupScreen(): void {
   // Skip in non-interactive / CI / print mode
-  if (process.env.CI || !process.stdout.isTTY) return
+  if (
+    process.env.CI ||
+    !process.stdout.isTTY ||
+    process.argv.includes('-p') ||
+    process.argv.includes('--print')
+  ) return
 
   const p = detectProvider()
   const W = 62

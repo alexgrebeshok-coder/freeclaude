@@ -1060,6 +1060,7 @@ async function* queryModel(
       ? ((await getInferenceProfileBackingModel(options.model)) ??
         options.model)
       : options.model
+  let runtimeModel = process.env.OPENAI_MODEL || resolvedModel
 
   queryCheckpoint('query_tool_schema_build_start')
   const isAgenticQuery =
@@ -1978,7 +1979,11 @@ async function* queryModel(
 
         switch (part.type) {
           case 'message_start': {
-            partialMessage = part.message
+            runtimeModel = part.message.model || process.env.OPENAI_MODEL || runtimeModel
+            partialMessage = {
+              ...part.message,
+              model: runtimeModel,
+            }
             ttftMs = Date.now() - start
             usage = updateUsage(usage, part.message?.usage)
             // Capture research from message_start if available (internal only).
@@ -2248,16 +2253,16 @@ async function* queryModel(
             }
 
             // Update cost
-            const costUSDForPart = calculateUSDCost(resolvedModel, usage)
+            const costUSDForPart = calculateUSDCost(runtimeModel, usage)
             costUSD += addToTotalSessionCost(
               costUSDForPart,
               usage,
-              options.model,
+              runtimeModel,
             )
 
             const refusalMessage = getErrorMessageIfRefusal(
               part.delta.stop_reason,
-              options.model,
+              runtimeModel,
             )
             if (refusalMessage) {
               yield refusalMessage
@@ -2818,14 +2823,16 @@ async function* queryModel(
     // message_delta handler before any yield. Fallback pushes to newMessages
     // then yields, so tracking must be here to survive .return() at the yield.
     if (fallbackMessage) {
+      runtimeModel =
+        fallbackMessage.message.model || process.env.OPENAI_MODEL || runtimeModel
       const fallbackUsage = fallbackMessage.message.usage
       usage = updateUsage(EMPTY_USAGE, fallbackUsage)
       stopReason = fallbackMessage.message.stop_reason
-      const fallbackCost = calculateUSDCost(resolvedModel, fallbackUsage)
+      const fallbackCost = calculateUSDCost(runtimeModel, fallbackUsage)
       costUSD += addToTotalSessionCost(
         fallbackCost,
         fallbackUsage,
-        options.model,
+        runtimeModel,
       )
     }
   }
@@ -2857,7 +2864,7 @@ async function* queryModel(
   void options.getToolPermissionContext().then(permissionContext => {
     logAPISuccessAndDuration({
       model:
-        newMessages[0]?.message.model ?? partialMessage?.model ?? options.model,
+        newMessages[0]?.message.model ?? partialMessage?.model ?? runtimeModel,
       preNormalizedModel: options.model,
       usage,
       start,

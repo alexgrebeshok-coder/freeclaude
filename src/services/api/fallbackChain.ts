@@ -96,7 +96,7 @@ export const CONFIG_PATH = getFreeClaudeConfigPath()
 // Errors that trigger fallback
 // ---------------------------------------------------------------------------
 
-const FALLBACK_STATUS_CODES = new Set([401, 429, 500, 502, 503, 504])
+const FALLBACK_STATUS_CODES = new Set([401, 403, 429, 500, 502, 503, 504])
 
 // Network error patterns that should trigger fallback
 const NETWORK_ERROR_PATTERNS = [
@@ -289,8 +289,51 @@ function toFallbackLogLevel(
     : undefined
 }
 
-export function shouldFallback(statusCode: number): boolean {
-  return FALLBACK_STATUS_CODES.has(statusCode)
+export function isProviderRestrictionError(error: Error | undefined): boolean {
+  const msg = String(error?.message || '').toLowerCase()
+  return (
+    msg.includes('openai api error 403:') &&
+    (
+      msg.includes('provider terms of service') ||
+      msg.includes('violation of provider terms of service') ||
+      msg.includes('request is prohibited due to a violation')
+    )
+  )
+}
+
+export function describeProviderError(
+  error: Error | undefined,
+  statusCode: number,
+): string {
+  if (isProviderRestrictionError(error)) {
+    return 'HTTP 403 provider geo/TOS restriction'
+  }
+
+  return statusCode > 0
+    ? `HTTP ${statusCode}`
+    : error?.message?.slice(0, 60) || 'unknown error'
+}
+
+export function normalizeProviderError(
+  error: Error,
+  statusCode: number,
+): Error {
+  if (statusCode === 403 && isProviderRestrictionError(error)) {
+    return new Error(
+      'OpenAI API error 403: Request blocked by provider Terms of Service or regional restrictions. FreeClaude can fall back to the next configured provider/model when available.\n' +
+      `Original error: ${error.message}`,
+    )
+  }
+
+  return error
+}
+
+export function shouldFallback(
+  statusCode: number,
+  error?: Error,
+): boolean {
+  return FALLBACK_STATUS_CODES.has(statusCode) &&
+    (statusCode !== 403 || isProviderRestrictionError(error))
 }
 
 /**
