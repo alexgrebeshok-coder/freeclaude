@@ -28,6 +28,14 @@ interface KnownProviderDefinition {
   models: string[]
 }
 
+interface EnvProviderDefinition {
+  name: string
+  envKey: string
+  modelEnvKey?: string
+  baseUrl: string
+  defaultModel: string
+}
+
 const KNOWN_PROVIDER_DEFINITIONS: KnownProviderDefinition[] = [
   {
     slug: 'zai',
@@ -139,6 +147,107 @@ const KNOWN_PROVIDER_DEFINITIONS: KnownProviderDefinition[] = [
     slug: 'huggingface',
     baseUrl: 'https://api-inference.huggingface.co/v1',
     models: ['(any HF model ID)'],
+  },
+]
+
+const ENV_PROVIDER_DEFINITIONS: EnvProviderDefinition[] = [
+  {
+    name: 'zai',
+    envKey: 'ZAI_API_KEY',
+    baseUrl: 'https://api.z.ai/api/coding/paas/v4',
+    defaultModel: 'glm-5',
+  },
+  {
+    name: 'gemini',
+    envKey: 'GEMINI_API_KEY',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    defaultModel: 'gemini-2.5-flash',
+  },
+  {
+    name: 'groq',
+    envKey: 'GROQ_API_KEY',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    defaultModel: 'llama-3.3-70b-versatile',
+  },
+  {
+    name: 'cerebras',
+    envKey: 'CEREBRAS_API_KEY',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    defaultModel: 'llama-4-scout-17b-16e',
+  },
+  {
+    name: 'qwen',
+    envKey: 'DASHSCOPE_API_KEY',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    defaultModel: 'qwen3-235b-a22b',
+  },
+  {
+    name: 'openrouter',
+    envKey: 'OPENROUTER_API_KEY',
+    modelEnvKey: 'OPENROUTER_MODEL',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    defaultModel: 'qwen/qwen3-coder-next',
+  },
+  {
+    name: 'openai',
+    envKey: 'OPENAI_API_KEY',
+    modelEnvKey: 'OPENAI_MODEL',
+    baseUrl: 'https://api.openai.com/v1',
+    defaultModel: 'gpt-4o',
+  },
+  {
+    name: 'deepseek',
+    envKey: 'DEEPSEEK_API_KEY',
+    baseUrl: 'https://api.deepseek.com/v1',
+    defaultModel: 'deepseek-chat',
+  },
+  {
+    name: 'mistral',
+    envKey: 'MISTRAL_API_KEY',
+    baseUrl: 'https://api.mistral.ai/v1',
+    defaultModel: 'mistral-large-latest',
+  },
+  {
+    name: 'huggingface',
+    envKey: 'HF_TOKEN',
+    baseUrl: 'https://api-inference.huggingface.co/v1',
+    defaultModel: '(any HF model ID)',
+  },
+  {
+    name: 'together',
+    envKey: 'TOGETHER_API_KEY',
+    baseUrl: 'https://api.together.xyz/v1',
+    defaultModel: 'meta-llama/Llama-4-Maverick-17B-128E-Instruct',
+  },
+  {
+    name: 'fireworks',
+    envKey: 'FIREWORKS_API_KEY',
+    baseUrl: 'https://api.fireworks.ai/inference/v1',
+    defaultModel: 'accounts/fireworks/models/llama-v4p-70b-instruct',
+  },
+  {
+    name: 'deepinfra',
+    envKey: 'DEEPINFRA_API_KEY',
+    baseUrl: 'https://api.deepinfra.com/v1/openai',
+    defaultModel: 'meta-llama/Llama-4-Maverick-17B-128E-Instruct',
+  },
+  {
+    name: 'perplexity',
+    envKey: 'PERPLEXITY_API_KEY',
+    baseUrl: 'https://api.perplexity.ai',
+    defaultModel: 'sonar-pro',
+  },
+  {
+    name: 'siliconflow',
+    envKey: 'SILICONFLOW_API_KEY',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    defaultModel: 'deepseek-ai/DeepSeek-V3',
+  },
+  {
+    name: 'sambanova',
+    envKey: 'SAMBANOVA_API_KEY',
+    baseUrl: 'https://api.sambanova.ai/v1',
+    defaultModel: 'Meta-Llama-3.3-70B-Instruct',
   },
 ]
 
@@ -395,6 +504,22 @@ export function getActiveFreeClaudeProvider(
       baseUrl: envBaseUrl ?? '',
       apiKey: envApiKey ?? '',
       model: envModel ?? '',
+    }
+  }
+
+  const envProvider = ENV_PROVIDER_DEFINITIONS.find(spec =>
+    !!resolveFreeClaudeApiKey(process.env[spec.envKey]),
+  )
+  if (envProvider) {
+    const model =
+      envProvider.modelEnvKey
+        ? process.env[envProvider.modelEnvKey]?.trim() || envProvider.defaultModel
+        : envProvider.defaultModel
+    return {
+      name: envProvider.name,
+      baseUrl: envProvider.baseUrl,
+      apiKey: process.env[envProvider.envKey] ?? '',
+      model,
     }
   }
 
