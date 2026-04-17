@@ -76,7 +76,7 @@ type Props<T> = {
   onSelectedImageIndexChange?: (index: number) => void;
 };
 export function SelectInputOption(t0) {
-  const $ = _c(100);
+  const $ = _c(101);
   const {
     option,
     isFocused,
@@ -374,8 +374,8 @@ export function SelectInputOption(t0) {
     t31 = $[58];
   }
   let t32;
-  if ($[59] !== cursorOffset || $[60] !== imagesSelected || $[61] !== inputValue || $[62] !== isFocused || $[63] !== onExit || $[64] !== onImagePaste || $[65] !== onInputChange || $[66] !== onSubmit || $[67] !== option || $[68] !== showLabel) {
-    t32 = showLabel ? <><Text color={isFocused ? "suggestion" : undefined}>{option.label}</Text>{isFocused ? <><Text color="suggestion">{option.labelValueSeparator ?? ", "}</Text><TextInput value={inputValue} onChange={value => {
+  if ($[59] !== cursorOffset || $[60] !== imagesSelected || $[61] !== inputValue || $[62] !== isFocused || $[63] !== onExit || $[64] !== onImagePaste || $[65] !== onInputChange || $[66] !== onSubmit || $[67] !== option || $[68] !== showLabel || $[100] !== isSelected) {
+    t32 = showLabel ? <><Text color={isFocused ? "suggestion" : undefined} bold={isFocused || isSelected}>{option.label}</Text>{isFocused ? <><Text color="suggestion" bold={isFocused || isSelected}>{option.labelValueSeparator ?? ", "}</Text><TextInput value={inputValue} onChange={value => {
           isUserEditing.current = true;
           onInputChange(value);
           option.onChange(value);
@@ -410,6 +410,7 @@ export function SelectInputOption(t0) {
     $[66] = onSubmit;
     $[67] = option;
     $[68] = showLabel;
+    $[100] = isSelected;
     $[69] = t32;
   } else {
     t32 = $[69];
@@ -439,7 +440,7 @@ export function SelectInputOption(t0) {
   }
   let t35;
   if ($[81] !== descriptionPaddingLeft || $[82] !== isFocused || $[83] !== isSelected || $[84] !== option.description || $[85] !== option.dimDescription) {
-    t35 = option.description && <Box paddingLeft={descriptionPaddingLeft}><Text dimColor={option.dimDescription !== false} color={isSelected ? "success" : isFocused ? "suggestion" : undefined}>{option.description}</Text></Box>;
+    t35 = option.description && <Box paddingLeft={descriptionPaddingLeft}><Text dimColor={option.dimDescription !== false} color={isSelected ? "success" : isFocused ? "suggestion" : undefined} bold={isFocused || isSelected}>{option.description}</Text></Box>;
     $[81] = descriptionPaddingLeft;
     $[82] = isFocused;
     $[83] = isSelected;

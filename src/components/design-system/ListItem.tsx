@@ -102,7 +102,7 @@ type ListItemProps = {
  * </ListItem>
  */
 export function ListItem(t0) {
-  const $ = _c(32);
+  const $ = _c(34);
   const {
     isFocused,
     isSelected: t1,
@@ -192,52 +192,54 @@ export function ListItem(t0) {
     t8 = $[13];
   }
   let t9;
-  if ($[14] !== children || $[15] !== disabled || $[16] !== styled || $[17] !== textColor) {
-    t9 = styled ? <Text color={textColor} dimColor={disabled}>{children}</Text> : children;
+  if ($[14] !== children || $[15] !== disabled || $[16] !== isFocused || $[17] !== isSelected || $[18] !== styled || $[19] !== textColor) {
+    t9 = styled ? <Text color={textColor} dimColor={disabled} bold={isFocused || isSelected}>{children}</Text> : children;
     $[14] = children;
     $[15] = disabled;
-    $[16] = styled;
-    $[17] = textColor;
-    $[18] = t9;
+    $[16] = isFocused;
+    $[17] = isSelected;
+    $[18] = styled;
+    $[19] = textColor;
+    $[20] = t9;
   } else {
-    t9 = $[18];
+    t9 = $[20];
   }
   let t10;
-  if ($[19] !== disabled || $[20] !== isSelected) {
+  if ($[21] !== disabled || $[22] !== isSelected) {
     t10 = isSelected && !disabled && <Text color="success">{figures.tick}</Text>;
-    $[19] = disabled;
-    $[20] = isSelected;
-    $[21] = t10;
+    $[21] = disabled;
+    $[22] = isSelected;
+    $[23] = t10;
   } else {
-    t10 = $[21];
+    t10 = $[23];
   }
   let t11;
-  if ($[22] !== t10 || $[23] !== t8 || $[24] !== t9) {
+  if ($[24] !== t10 || $[25] !== t8 || $[26] !== t9) {
     t11 = <Box flexDirection="row" gap={1}>{t8}{t9}{t10}</Box>;
-    $[22] = t10;
-    $[23] = t8;
-    $[24] = t9;
-    $[25] = t11;
+    $[24] = t10;
+    $[25] = t8;
+    $[26] = t9;
+    $[27] = t11;
   } else {
-    t11 = $[25];
+    t11 = $[27];
   }
   let t12;
-  if ($[26] !== description) {
+  if ($[28] !== description) {
     t12 = description && <Box paddingLeft={2}><Text color="inactive">{description}</Text></Box>;
-    $[26] = description;
-    $[27] = t12;
+    $[28] = description;
+    $[29] = t12;
   } else {
-    t12 = $[27];
+    t12 = $[29];
   }
   let t13;
-  if ($[28] !== cursorRef || $[29] !== t11 || $[30] !== t12) {
+  if ($[30] !== cursorRef || $[31] !== t11 || $[32] !== t12) {
     t13 = <Box ref={cursorRef} flexDirection="column">{t11}{t12}</Box>;
-    $[28] = cursorRef;
-    $[29] = t11;
-    $[30] = t12;
-    $[31] = t13;
+    $[30] = cursorRef;
+    $[31] = t11;
+    $[32] = t12;
+    $[33] = t13;
   } else {
-    t13 = $[31];
+    t13 = $[33];
   }
   return t13;
 }

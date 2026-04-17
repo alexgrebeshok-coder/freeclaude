@@ -264,7 +264,7 @@ function List(t0) {
         const isFocused = actualIndex === focusedIndex;
         const atLowEdge = i === 0 && windowStart > 0;
         const atHighEdge = i === visible.length - 1 && windowStart + visibleCount < total;
-        return <ListItem key={getKey(item)} isFocused={isFocused} showScrollUp={direction === "up" ? atHighEdge : atLowEdge} showScrollDown={direction === "up" ? atLowEdge : atHighEdge} styled={false}>{renderItem(item, isFocused)}</ListItem>;
+        return <ListItem key={getKey(item)} isFocused={isFocused} showScrollUp={direction === "up" ? atHighEdge : atLowEdge} showScrollDown={direction === "up" ? atLowEdge : atHighEdge}>{renderItem(item, isFocused)}</ListItem>;
       };
       $[14] = direction;
       $[15] = focusedIndex;
