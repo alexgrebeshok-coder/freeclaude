@@ -1097,12 +1097,13 @@ class OpenAIShimMessages {
           const statusCode = match ? parseInt(match[1], 10) : 0
           const normalizedError = normalizeProviderError(error as Error, statusCode)
           lastError = normalizedError
+          const networkError = isNetworkError(error as Error)
           const canFallbackPinnedModel =
             !useFallbackProviderModel &&
             hasExplicitModel &&
-            isProviderRestrictionError(error as Error)
+            (isProviderRestrictionError(error as Error) || networkError)
 
-          if (shouldFallback(statusCode, error as Error) || isNetworkError(error as Error)) {
+          if (shouldFallback(statusCode, error as Error) || networkError) {
             const reason = describeProviderError(error as Error, statusCode)
             if (hasExplicitModel && !useFallbackProviderModel && !canFallbackPinnedModel) {
               console.error(
