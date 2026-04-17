@@ -23,6 +23,7 @@ import {
   getCanonicalName,
   getMarketingNameForModel,
 } from '../utils/model/model.js'
+import { getActiveFreeClaudeModel } from '../utils/freeclaudeConfig.ts'
 import { getSkillToolCommands } from 'src/commands.js'
 import { SKILL_TOOL_NAME } from '../tools/SkillTool/constants.js'
 import { getOutputStyleConfig } from './outputStyles.js'
@@ -608,6 +609,8 @@ export async function computeEnvInfo(
   additionalWorkingDirectories?: string[],
 ): Promise<string> {
   const [isGit, unameSR] = await Promise.all([getIsGit(), getUnameSR()])
+  const runtimeModelId =
+    getActiveFreeClaudeModel(modelId) ?? modelId
 
   // Undercover: keep ALL model names/IDs out of the system prompt so nothing
   // internal can leak into public commits/PRs. This includes the public
@@ -621,10 +624,10 @@ export async function computeEnvInfo(
   if (process.env.USER_TYPE === 'ant' && isUndercover()) {
     // suppress
   } else {
-    const marketingName = getMarketingNameForModel(modelId)
+    const marketingName = getMarketingNameForModel(runtimeModelId)
     modelDescription = marketingName
-      ? `You are powered by the model named ${marketingName}. The exact model ID is ${modelId}.`
-      : `You are powered by the model ${modelId}.`
+      ? `You are powered by the model named ${marketingName}. The exact model ID is ${runtimeModelId}. If the user asks which model is currently running, answer with ${runtimeModelId}.`
+      : `You are powered by the model ${runtimeModelId}. If the user asks which model is currently running, answer with ${runtimeModelId}.`
   }
 
   const additionalDirsInfo =
@@ -632,7 +635,7 @@ export async function computeEnvInfo(
       ? `Additional working directories: ${additionalWorkingDirectories.join(', ')}\n`
       : ''
 
-  const cutoff = getKnowledgeCutoff(modelId)
+  const cutoff = getKnowledgeCutoff(runtimeModelId)
   const knowledgeCutoffMessage = cutoff
     ? `\n\nAssistant knowledge cutoff is ${cutoff}.`
     : ''
@@ -653,6 +656,8 @@ export async function computeSimpleEnvInfo(
   additionalWorkingDirectories?: string[],
 ): Promise<string> {
   const [isGit, unameSR] = await Promise.all([getIsGit(), getUnameSR()])
+  const runtimeModelId =
+    getActiveFreeClaudeModel(modelId) ?? modelId
 
   // Undercover: strip all model name/ID references. See computeEnvInfo.
   // DCE: inline the USER_TYPE check at each site — do NOT hoist to a const.
@@ -660,13 +665,13 @@ export async function computeSimpleEnvInfo(
   if (process.env.USER_TYPE === 'ant' && isUndercover()) {
     // suppress
   } else {
-    const marketingName = getMarketingNameForModel(modelId)
+    const marketingName = getMarketingNameForModel(runtimeModelId)
     modelDescription = marketingName
-      ? `You are powered by the model named ${marketingName}. The exact model ID is ${modelId}.`
-      : `You are powered by the model ${modelId}.`
+      ? `You are powered by the model named ${marketingName}. The exact model ID is ${runtimeModelId}. If the user asks which model is currently running, answer with ${runtimeModelId}.`
+      : `You are powered by the model ${runtimeModelId}. If the user asks which model is currently running, answer with ${runtimeModelId}.`
   }
 
-  const cutoff = getKnowledgeCutoff(modelId)
+  const cutoff = getKnowledgeCutoff(runtimeModelId)
   const knowledgeCutoffMessage = cutoff
     ? `Assistant knowledge cutoff is ${cutoff}.`
     : null

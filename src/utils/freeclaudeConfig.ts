@@ -150,6 +150,16 @@ function normalizeName(name: string | undefined): string {
   return (name ?? '').trim().toLowerCase()
 }
 
+export function resolveFreeClaudeApiKey(
+  apiKey: string | undefined,
+): string {
+  let resolvedApiKey = apiKey?.trim() ?? ''
+  if (resolvedApiKey.startsWith('env:')) {
+    resolvedApiKey = process.env[resolvedApiKey.slice(4)]?.trim() ?? ''
+  }
+  return resolvedApiKey
+}
+
 function cloneProvider(
   provider: FreeClaudeProviderConfig,
 ): FreeClaudeProviderConfig {
@@ -366,4 +376,53 @@ export function getOrderedConfiguredProviders(
   }
   providers.unshift(activeProvider!)
   return providers
+}
+
+export function getActiveFreeClaudeProvider(
+  config: FreeClaudeConfig | null = readFreeClaudeConfig(),
+): FreeClaudeProviderConfig | undefined {
+  const envBaseUrl = process.env.OPENAI_BASE_URL?.trim()
+  const envModel = process.env.OPENAI_MODEL?.trim()
+  const envApiKey = process.env.OPENAI_API_KEY?.trim()
+
+  if (process.env.CLAUDE_CODE_USE_OPENAI === '1' && (envBaseUrl || envModel || envApiKey)) {
+    const knownProvider = findKnownProviderDefinition({
+      baseUrl: envBaseUrl,
+    })
+
+    return {
+      name: knownProvider?.slug ?? 'openai',
+      baseUrl: envBaseUrl ?? '',
+      apiKey: envApiKey ?? '',
+      model: envModel ?? '',
+    }
+  }
+
+  if (!config) {
+    return undefined
+  }
+
+  const orderedProviders = getOrderedConfiguredProviders(config)
+  return (
+    orderedProviders.find(provider => !!resolveFreeClaudeApiKey(provider.apiKey)) ??
+    orderedProviders[0]
+  )
+}
+
+export function hasActiveFreeClaudeProvider(
+  config: FreeClaudeConfig | null = readFreeClaudeConfig(),
+): boolean {
+  const provider = getActiveFreeClaudeProvider(config)
+  if (!provider) {
+    return false
+  }
+
+  return !!resolveFreeClaudeApiKey(provider.apiKey)
+}
+
+export function getActiveFreeClaudeModel(
+  fallbackModel?: string,
+  config: FreeClaudeConfig | null = readFreeClaudeConfig(),
+): string | undefined {
+  return getActiveFreeClaudeProvider(config)?.model?.trim() || fallbackModel?.trim()
 }

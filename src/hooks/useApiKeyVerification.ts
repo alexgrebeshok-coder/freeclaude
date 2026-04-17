@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { verifyApiKey } from '../services/api/claude.js'
+import { hasActiveFreeClaudeProvider } from '../utils/freeclaudeConfig.ts'
 import {
   getAnthropicApiKeyWithSource,
   getApiKeyFromApiKeyHelper,
@@ -24,11 +25,11 @@ export type ApiKeyVerificationResult = {
 export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [status, setStatus] = useState<VerificationStatus>(() => {
     // FreeClaude: Skip auth if using OpenAI-compatible API
-    if (process.env.CLAUDE_CODE_USE_OPENAI === '1') {
-      if (process.env.OPENAI_API_KEY) {
-        return 'valid'
-      }
-      return 'missing'
+    if (
+      process.env.CLAUDE_CODE_USE_OPENAI === '1' ||
+      hasActiveFreeClaudeProvider()
+    ) {
+      return hasActiveFreeClaudeProvider() ? 'valid' : 'missing'
     }
     
     if (!isAnthropicAuthEnabled() || isClaudeAISubscriber()) {
@@ -50,13 +51,17 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
 
   const verify = useCallback(async (): Promise<void> => {
     // FreeClaude: Skip auth if using OpenAI-compatible API
-    if (process.env.CLAUDE_CODE_USE_OPENAI === '1') {
-      if (process.env.OPENAI_API_KEY) {
+    if (
+      process.env.CLAUDE_CODE_USE_OPENAI === '1' ||
+      hasActiveFreeClaudeProvider()
+    ) {
+      if (hasActiveFreeClaudeProvider()) {
         setStatus('valid')
+        setError(null)
         return
       }
       setStatus('missing')
-      setError(new Error('OPENAI_API_KEY not set'))
+      setError(new Error('FreeClaude provider is not configured'))
       return
     }
     
