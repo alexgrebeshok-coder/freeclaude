@@ -43,4 +43,5 @@ jobs:
         run: npm run typecheck:desktop-extension
 
       - name: Security audit
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
+        continue-on-error: true

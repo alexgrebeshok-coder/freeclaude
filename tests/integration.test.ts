@@ -4,27 +4,34 @@ import {
   shouldFallback,
   isNetworkError,
   describeProviderError,
+  type ProviderConfig,
 } from '../src/services/api/fallbackChain.js'
 
-describe('Integration: fallback chain flow', () => {
-  test('network error triggers fallback to next provider', () => {
+// Test providers — injected directly, no filesystem dependency
+const testProviders: ProviderConfig[] = [
+  { name: 'primary',   baseUrl: 'https://api.primary.ai/v1',   apiKey: 'key-1', model: 'model-a', priority: 1, timeout: 30000 },
+  { name: 'secondary', baseUrl: 'https://api.secondary.ai/v1', apiKey: 'key-2', model: 'model-b', priority: 2, timeout: 30000 },
+  { name: 'tertiary',  baseUrl: 'https://api.tertiary.ai/v1',  apiKey: 'key-3', model: 'model-c', priority: 3, timeout: 30000 },
+]
+
+describe('Integration: fallback helper functions', () => {
+  test('network error triggers fallback', () => {
     const networkErr = new Error('fetch failed')
     expect(isNetworkError(networkErr)).toBe(true)
     expect(shouldFallback(0, networkErr)).toBe(true)
   })
 
-  test('429 triggers fallback', () => {
+  test('HTTP 429/401/5xx trigger fallback', () => {
     expect(shouldFallback(429)).toBe(true)
-  })
-
-  test('401 triggers fallback (auth failure at one provider)', () => {
     expect(shouldFallback(401)).toBe(true)
-  })
-
-  test('5xx triggers fallback', () => {
     expect(shouldFallback(500)).toBe(true)
     expect(shouldFallback(502)).toBe(true)
     expect(shouldFallback(503)).toBe(true)
+  })
+
+  test('HTTP 200/404 do NOT trigger fallback', () => {
+    expect(shouldFallback(200)).toBe(false)
+    expect(shouldFallback(404)).toBe(false)
   })
 
   test('describeProviderError formats network errors', () => {
@@ -37,11 +44,73 @@ describe('Integration: fallback chain flow', () => {
     expect(describeProviderError(undefined, 429)).toBe('HTTP 429 rate limited')
     expect(describeProviderError(undefined, 500)).toBe('HTTP 500 server error')
   })
+})
 
-  test('FallbackChain can be instantiated', () => {
-    // FallbackChain reads ~/.freeclaude.json — in CI there's no config.
-    // Just verify the constructor doesn't throw and basic API works.
-    expect(() => new FallbackChain([])).not.toThrow()
+describe('Integration: FallbackChain with injected providers', () => {
+  test('constructs with injected providers (no filesystem)', () => {
+    const chain = new FallbackChain(testProviders)
+    expect(chain.getProviders()).toHaveLength(3)
+    expect(chain.isEnabled()).toBe(true)
+  })
+
+  test('getCurrent returns highest-priority provider', () => {
+    const chain = new FallbackChain(testProviders)
+    const current = chain.getCurrent()
+    expect(current).not.toBeNull()
+    expect(current!.name).toBe('primary')
+  })
+
+  test('getNext returns next provider after failure', () => {
+    const chain = new FallbackChain(testProviders)
+    const next = chain.getNext('primary')
+    expect(next).not.toBeNull()
+    expect(next!.name).toBe('secondary')
+  })
+
+  test('markDown after 3 errors deprioritizes provider, getNext skips it', () => {
+    const chain = new FallbackChain(testProviders)
+
+    // 3 consecutive errors → marked down
+    chain.markDown('primary')
+    chain.markDown('primary')
+    chain.markDown('primary')
+
+    const current = chain.getCurrent()
+    expect(current!.name).not.toBe('primary') // primary is down
+  })
+
+  test('markSuccess resets error streak', () => {
+    const chain = new FallbackChain(testProviders)
+
+    chain.markDown('primary')
+    chain.markDown('primary')
+    chain.markSuccess('primary') // reset before 3rd error
+
+    const current = chain.getCurrent()
+    expect(current!.name).toBe('primary') // still healthy
+  })
+
+  test('single provider chain: isEnabled is false', () => {
+    const chain = new FallbackChain([testProviders[0]])
+    expect(chain.isEnabled()).toBe(false)
+    expect(chain.getCurrent()!.name).toBe('primary')
+  })
+
+  test('empty provider chain: getCurrent returns null', () => {
+    const chain = new FallbackChain([])
+    expect(chain.getCurrent()).toBeNull()
+    expect(chain.isEnabled()).toBe(false)
+  })
+
+  test('stats track errors and fallbacks', () => {
+    const chain = new FallbackChain(testProviders)
+
+    chain.markDown('primary')
+    chain.getNext('primary') // triggers fallback stat
+
+    const stats = chain.getStats()
+    expect(stats.errors['primary']).toBe(1)
+    expect(stats.totalRequests).toBe(1)
   })
 })
 

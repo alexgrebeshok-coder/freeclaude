@@ -413,8 +413,17 @@ export class FallbackChain {
   private currentIndex = 0
   private enabled = false
 
-  constructor() {
-    this.loadProviders()
+  /**
+   * @param injectedProviders — if provided, uses these directly (for testing).
+   *                            Omit to load from ~/.freeclaude.json / env vars.
+   */
+  constructor(injectedProviders?: ProviderConfig[]) {
+    if (injectedProviders) {
+      this.providers = injectedProviders.map(createRuntimeProvider)
+      this.enabled = injectedProviders.length > 1
+    } else {
+      this.loadProviders()
+    }
   }
 
   /**
