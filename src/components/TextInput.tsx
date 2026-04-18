@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle';
 import chalk from 'chalk';
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useVoiceState } from '../context/voice.js';
 import { useClipboardImageHint } from '../hooks/useClipboardImageHint.js';
 import { colorize } from '../ink/colorize.js';
@@ -64,6 +64,19 @@ export default function TextInput(props: Props): React.ReactNode {
   // driving TextInput re-renders at 50ms during warmup (while spaces
   // are simultaneously arriving every 30-80ms) causes visible stutter.
   const canShowCursor = isTerminalFocused && !accessibilityEnabled;
+
+  // Cursor blink: 600ms on/off cycle when the text cursor is active
+  const shouldBlinkCursor = canShowCursor && !isVoiceRecording && Boolean(props.showCursor && props.focus) && !reducedMotion;
+  const [cursorVisible, setCursorVisible] = useState(true);
+  useEffect(() => {
+    if (!shouldBlinkCursor) {
+      setCursorVisible(true);
+      return;
+    }
+    const id = setInterval(() => setCursorVisible(v => !v), 600);
+    return () => clearInterval(id);
+  }, [shouldBlinkCursor]);
+
   let invert: (text: string) => string;
   if (!canShowCursor) {
     invert = (text: string) => text;
@@ -88,7 +101,9 @@ export default function TextInput(props: Props): React.ReactNode {
     } : hueToRgb(hue);
     invert = () => chalk.rgb(r, g, b)(BARS[barIndex]!);
   } else {
-    invert = (text: string) => colorize(colorize(text, theme.text, 'foreground'), theme.focusBackground, 'background');
+    invert = cursorVisible
+      ? (text: string) => colorize(colorize(text, theme.text, 'foreground'), theme.focusBackground, 'background')
+      : (text: string) => text;
   }
   const textInputState = useTextInput({
     value: props.value,
