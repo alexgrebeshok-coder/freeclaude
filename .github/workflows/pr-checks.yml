@@ -30,29 +30,8 @@ jobs:
       - name: Smoke check
         run: bun run smoke
 
-      - name: Provider tests
-        run: bun run test:provider
-
-      - name: Model switcher tests
-        run: bun test src/utils/freeclaudeConfig.test.ts src/commands/model/model.test.ts
-
-      - name: Background jobs tests
-        run: bun test src/commands/jobs/jobs.test.ts
-
-      - name: Memory store tests
-        run: bun test src/services/memory/memoryStore.test.ts
-
-      - name: Voice service tests
-        run: bun test src/services/voice/*.test.ts
-
-      - name: Runtime doctor tests
-        run: bun test scripts/system-check.test.ts
-
-      - name: Provider recommendation tests
-        run: npm run test:provider-recommendation
-
-      - name: Task manager tests
-        run: bun test src/services/tasks/taskManager.test.ts
+      - name: All tests
+        run: bun run test:all
 
       - name: Trust baseline
         run: npm run check:trust-baseline
@@ -62,3 +41,6 @@ jobs:
 
       - name: Desktop & Extension typecheck
         run: npm run typecheck:desktop-extension
+
+      - name: Security audit
+        run: npm audit --audit-level=high || true

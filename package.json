@@ -49,7 +49,7 @@
     "check:trust-baseline": "npm run check:version-truth && npm run typecheck:supported && bun run smoke",
     "smoke": "bun run build && node dist/cli.mjs --version",
     "test:provider": "bun test src/services/api/*.test.ts src/utils/context.test.ts",
-    "test:all": "bun test src/**/*.test.ts && node --test --experimental-strip-types src/utils/providerRecommendation.test.ts src/utils/providerProfile.test.ts",
+    "test:all": "bun test src/**/*.test.ts tests/*.test.ts && node --test --experimental-strip-types src/utils/providerRecommendation.test.ts src/utils/providerProfile.test.ts",
     "doctor:runtime": "bun run scripts/system-check.ts",
     "doctor:runtime:json": "bun run scripts/system-check.ts --json",
     "doctor:report": "bun run scripts/system-check.ts --out reports/doctor-runtime.json",
