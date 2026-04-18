@@ -32,6 +32,12 @@ const voicePipelineTest = readText(
   join(repoRoot, 'src', 'services', 'voice', 'voice-pipeline.test.ts'),
 )
 const expectedVersion = rootPackage.version
+const hasGenericVoiceVersionAssertion =
+  voicePipelineTest.includes(`test('cli.mjs contains current package version'`) &&
+  voicePipelineTest.includes(`expect(cli).toContain(packageJson.version ?? '')`)
+const hasLiteralVoiceVersionAssertion =
+  voicePipelineTest.includes(`cli.mjs contains ${expectedVersion}`) &&
+  voicePipelineTest.includes(`toContain('${expectedVersion}')`)
 
 const checks: VersionCheck[] = [
   {
@@ -63,10 +69,8 @@ const checks: VersionCheck[] = [
   },
   {
     label: 'src/services/voice/voice-pipeline.test.ts',
-    ok:
-      voicePipelineTest.includes(`cli.mjs contains ${expectedVersion}`) &&
-      voicePipelineTest.includes(`toContain('${expectedVersion}')`),
-    details: `expected voice version assertion for ${expectedVersion}`,
+    ok: hasGenericVoiceVersionAssertion || hasLiteralVoiceVersionAssertion,
+    details: 'expected voice version assertion tied to package.json or current version',
   },
 ]
 

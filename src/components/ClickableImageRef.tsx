@@ -30,13 +30,15 @@ export function ClickableImageRef(t0) {
   const isSelected = t1 === undefined ? false : t1;
   const imagePath = getStoredImagePath(imageId);
   const displayText = `[Image #${imageId}]`;
+  const selectedBackgroundColor = isSelected ? backgroundColor ?? "focusBackground" : backgroundColor;
+  const selectedTextColor = isSelected ? "text" : undefined;
   if (imagePath && supportsHyperlinks()) {
     const fileUrl = pathToFileURL(imagePath).href;
     let t2;
     let t3;
     if ($[0] !== backgroundColor || $[1] !== displayText || $[2] !== isSelected) {
-      t2 = <Text backgroundColor={backgroundColor} inverse={isSelected}>{displayText}</Text>;
-      t3 = <Text backgroundColor={backgroundColor} inverse={isSelected} bold={isSelected}>{displayText}</Text>;
+      t2 = <Text backgroundColor={selectedBackgroundColor} color={selectedTextColor}>{displayText}</Text>;
+      t3 = <Text backgroundColor={selectedBackgroundColor} color={selectedTextColor} bold={isSelected}>{displayText}</Text>;
       $[0] = backgroundColor;
       $[1] = displayText;
       $[2] = isSelected;
@@ -60,7 +62,7 @@ export function ClickableImageRef(t0) {
   }
   let t2;
   if ($[9] !== backgroundColor || $[10] !== displayText || $[11] !== isSelected) {
-    t2 = <Text backgroundColor={backgroundColor} inverse={isSelected}>{displayText}</Text>;
+    t2 = <Text backgroundColor={selectedBackgroundColor} color={selectedTextColor}>{displayText}</Text>;
     $[9] = backgroundColor;
     $[10] = displayText;
     $[11] = isSelected;

@@ -22,6 +22,8 @@ export type Theme = {
   suggestion: string
   remember: string
   background: string
+  focusBackground: string
+  selectedBackground: string
   // Semantic colors
   success: string
   error: string
@@ -133,6 +135,8 @@ const lightTheme: Theme = {
   suggestion: 'rgb(87,105,247)', // Medium blue
   remember: 'rgb(0,0,255)', // Blue
   background: 'rgb(0,153,153)', // Cyan
+  focusBackground: 'rgb(214, 228, 255)', // Soft blue focus fill for menus, tabs, and cursors
+  selectedBackground: 'rgb(223, 239, 225)', // Soft success fill for selected list items
   success: 'rgb(44,122,57)', // Green
   error: 'rgb(171,43,63)', // Red
   warning: 'rgb(150,108,30)', // Amber
@@ -215,6 +219,8 @@ const lightAnsiTheme: Theme = {
   suggestion: 'ansi:blue',
   remember: 'ansi:blue',
   background: 'ansi:cyan',
+  focusBackground: 'ansi:cyan',
+  selectedBackground: 'ansi:green',
   success: 'ansi:green',
   error: 'ansi:red',
   warning: 'ansi:yellow',
@@ -296,6 +302,8 @@ const darkAnsiTheme: Theme = {
   suggestion: 'ansi:blueBright',
   remember: 'ansi:blueBright',
   background: 'ansi:cyanBright',
+  focusBackground: 'ansi:blue',
+  selectedBackground: 'ansi:green',
   success: 'ansi:greenBright',
   error: 'ansi:redBright',
   warning: 'ansi:yellowBright',
@@ -377,6 +385,8 @@ const lightDaltonizedTheme: Theme = {
   suggestion: 'rgb(51,102,255)', // Bright blue
   remember: 'rgb(51,102,255)', // Bright blue
   background: 'rgb(0,153,153)', // Cyan (color-blind friendly)
+  focusBackground: 'rgb(214, 228, 255)', // Soft blue focus fill for menus, tabs, and cursors
+  selectedBackground: 'rgb(223, 239, 225)', // Soft selected fill with lightness contrast, not just hue
   success: 'rgb(0,102,153)', // Blue instead of green for deuteranopia
   error: 'rgb(204,0,0)', // Pure red for better distinction
   warning: 'rgb(255,153,0)', // Orange adjusted for deuteranopia
@@ -458,6 +468,8 @@ const darkTheme: Theme = {
   suggestion: 'rgb(177,185,249)', // Light blue-purple
   remember: 'rgb(177,185,249)', // Light blue-purple
   background: 'rgb(0,204,204)', // Bright cyan
+  focusBackground: 'rgb(38, 79, 120)', // Dark blue focus fill for selected rows and cursor cells
+  selectedBackground: 'rgb(36, 92, 58)', // Dark green selected fill that keeps white text readable
   success: 'rgb(78,186,101)', // Bright green
   error: 'rgb(255,107,128)', // Bright red
   warning: 'rgb(255,193,7)', // Bright amber
@@ -539,6 +551,8 @@ const darkDaltonizedTheme: Theme = {
   suggestion: 'rgb(153,204,255)', // Light blue
   remember: 'rgb(153,204,255)', // Light blue
   background: 'rgb(0,204,204)', // Bright cyan (color-blind friendly)
+  focusBackground: 'rgb(38, 79, 120)', // Dark blue focus fill for selected rows and cursor cells
+  selectedBackground: 'rgb(36, 92, 58)', // Dark selected fill with strong luminance contrast
   success: 'rgb(51,153,255)', // Blue instead of green
   error: 'rgb(255,102,102)', // Bright red
   warning: 'rgb(255,204,0)', // Yellow-orange for deuteranopia

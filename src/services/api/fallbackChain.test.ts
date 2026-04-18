@@ -72,7 +72,11 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('shouldFallback', () => {
+  test('triggers on 400 Bad Request', () => expect(shouldFallback(400)).toBe(true))
   test('triggers on 401 Unauthorized', () => expect(shouldFallback(401)).toBe(true))
+  test('triggers on generic 403 Forbidden', () => expect(
+    shouldFallback(403, new Error('OpenAI API error 403: forbidden')),
+  ).toBe(true))
   test('triggers on 429 Too Many Requests', () => expect(shouldFallback(429)).toBe(true))
   test('triggers on 500 Internal Server Error', () => expect(shouldFallback(500)).toBe(true))
   test('triggers on 502 Bad Gateway', () => expect(shouldFallback(502)).toBe(true))
@@ -86,11 +90,7 @@ describe('shouldFallback', () => {
       ),
     ),
   ).toBe(true))
-  test('does NOT trigger on 400 Bad Request', () => expect(shouldFallback(400)).toBe(false))
   test('does NOT trigger on 200 OK', () => expect(shouldFallback(200)).toBe(false))
-  test('does NOT trigger on auth 403 Forbidden', () => expect(
-    shouldFallback(403, new Error('OpenAI API error 403: forbidden')),
-  ).toBe(false))
 })
 
 describe('isProviderRestrictionError', () => {

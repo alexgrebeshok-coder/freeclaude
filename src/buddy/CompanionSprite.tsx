@@ -233,7 +233,7 @@ export function CompanionSprite(): React.ReactNode {
           <Text bold color={color}>
             {renderFace(companion)}
           </Text>{' '}
-          <Text italic dimColor={!focused && !reaction} bold={focused} inverse={focused && !reaction} color={reaction ? fading ? 'inactive' : color : focused ? color : undefined}>
+          <Text italic dimColor={!focused && !reaction} bold={focused} backgroundColor={focused && !reaction ? 'focusBackground' : undefined} color={reaction ? fading ? 'inactive' : color : focused ? 'text' : undefined}>
             {label}
           </Text>
         </Text>
@@ -267,7 +267,7 @@ export function CompanionSprite(): React.ReactNode {
       {sprite.map((line, i) => <Text key={i} color={i === 0 && heartFrame ? 'autoAccept' : color}>
           {line}
         </Text>)}
-      <Text italic bold={focused} dimColor={!focused} color={focused ? color : undefined} inverse={focused}>
+      <Text italic bold={focused} dimColor={!focused} color={focused ? 'text' : undefined} backgroundColor={focused ? 'focusBackground' : undefined}>
         {focused ? ` ${companion.name} ` : companion.name}
       </Text>
     </Box>;

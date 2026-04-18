@@ -44,7 +44,7 @@ export function TeamStatus(t0) {
   const t3 = teamsSelected ? "selected" : "normal";
   let t4;
   if ($[5] !== statusText || $[6] !== t3 || $[7] !== teamsSelected) {
-    t4 = <Text key={t3} color="background" inverse={teamsSelected}>{statusText}</Text>;
+    t4 = <Text key={t3} color={teamsSelected ? "text" : "background"} backgroundColor={teamsSelected ? "focusBackground" : undefined}>{statusText}</Text>;
     $[5] = statusText;
     $[6] = t3;
     $[7] = teamsSelected;

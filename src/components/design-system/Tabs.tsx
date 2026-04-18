@@ -203,7 +203,7 @@ export function Tabs(t0) {
       const [id, title_0] = t16;
       const isCurrent = selectedTabIndex === i;
       const hasColorCursor = color && isCurrent && headerFocused;
-      return <Text key={id} backgroundColor={hasColorCursor ? color : undefined} color={hasColorCursor ? "inverseText" : undefined} inverse={isCurrent && !hasColorCursor} bold={isCurrent}>{" "}{title_0}{" "}</Text>;
+      return <Text key={id} backgroundColor={hasColorCursor ? color : isCurrent ? "focusBackground" : undefined} color={hasColorCursor ? "inverseText" : isCurrent ? "text" : undefined} bold={isCurrent}>{" "}{title_0}{" "}</Text>;
     })}{spacerWidth > 0 && <Text>{" ".repeat(spacerWidth)}</Text>}</Box>;
   let t17;
   if ($[11] !== children || $[12] !== contentHeight || $[13] !== contentWidth || $[14] !== hidden || $[15] !== modalScrollRef || $[16] !== selectedTabIndex) {

@@ -59,7 +59,7 @@ const inputSchema = lazySchema(() =>
     file_path: z
       .string()
       .describe(
-        'The absolute path to the file to write (must be absolute, not relative)',
+        'The absolute path to the file to write, or a path relative to the current working directory',
       ),
     content: z.string().describe('The content to write to the file'),
   }),

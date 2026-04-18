@@ -6,6 +6,7 @@
  * event metadata across all analytics systems (Datadog, 1P).
  */
 
+import { feature } from 'bun:bundle'
 import { extname } from 'path'
 import memoize from 'lodash-es/memoize.js'
 import { env, getHostPlatformForAnalytics } from '../../utils/env.js'

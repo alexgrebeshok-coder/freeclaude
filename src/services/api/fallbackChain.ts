@@ -96,7 +96,7 @@ export const CONFIG_PATH = getFreeClaudeConfigPath()
 // Errors that trigger fallback
 // ---------------------------------------------------------------------------
 
-const FALLBACK_STATUS_CODES = new Set([401, 403, 429, 500, 502, 503, 504])
+const FALLBACK_STATUS_CODES = new Set([400, 401, 403, 429, 500, 502, 503, 504])
 
 // Network error patterns that should trigger fallback
 const NETWORK_ERROR_PATTERNS = [
@@ -332,8 +332,8 @@ export function shouldFallback(
   statusCode: number,
   error?: Error,
 ): boolean {
-  return FALLBACK_STATUS_CODES.has(statusCode) &&
-    (statusCode !== 403 || isProviderRestrictionError(error))
+  void error
+  return FALLBACK_STATUS_CODES.has(statusCode)
 }
 
 /**

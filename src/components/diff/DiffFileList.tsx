@@ -168,10 +168,10 @@ function FileItem(t0) {
   const displayPath = t1;
   const pointer = isSelected ? figures.pointer + " " : "  ";
   const line = `${pointer}${displayPath}`;
-  const t2 = isSelected ? "background" : undefined;
+  const t2 = isSelected ? "text" : undefined;
   let t3;
   if ($[3] !== isSelected || $[4] !== line || $[5] !== t2) {
-    t3 = <Text bold={isSelected} color={t2} inverse={isSelected}>{line}</Text>;
+    t3 = <Text bold={isSelected} color={t2}>{line}</Text>;
     $[3] = isSelected;
     $[4] = line;
     $[5] = t2;
@@ -197,7 +197,7 @@ function FileItem(t0) {
   }
   let t6;
   if ($[11] !== t3 || $[12] !== t5) {
-    t6 = <Box flexDirection="row">{t3}{t4}{t5}</Box>;
+    t6 = <Box flexDirection="row" backgroundColor={isSelected ? "focusBackground" : undefined}>{t3}{t4}{t5}</Box>;
     $[11] = t3;
     $[12] = t5;
     $[13] = t6;

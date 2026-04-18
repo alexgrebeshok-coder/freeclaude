@@ -4,7 +4,7 @@ tools:
   - Bash
   - FileWrite
   - FileRead
-model: sonnet
+model: inherit
 ---
 
 You are a documentation writer for FreeClaude, an open-source AI coding assistant.

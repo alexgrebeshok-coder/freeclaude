@@ -5,7 +5,7 @@ tools:
   - FileWrite
   - FileRead
   - FileEdit
-model: sonnet
+model: inherit
 ---
 
 You are a bug fixer for FreeClaude.

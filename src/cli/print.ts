@@ -390,6 +390,20 @@ The user cannot receive your response until the team is completely shut down.
 
 Shut down your team and prepare your final response for the user.`
 
+const HEADLESS_DIRECT_EDIT_APPEND_SYSTEM_PROMPT = [
+  'In headless/--print mode, prefer the minimum tool sequence needed to complete concrete file-change requests.',
+  'If the user already provided the target path and the requested edit is specific enough, go straight to the necessary Read -> Edit/Write flow instead of spending extra turns on planning, recap, or confirmation.',
+  'Only continue for another model turn after tool execution when more tool work or a substantive final answer is still required.',
+].join('\n')
+
+function getHeadlessAppendSystemPrompt(
+  appendSystemPrompt: string | undefined,
+): string {
+  return appendSystemPrompt
+    ? `${HEADLESS_DIRECT_EDIT_APPEND_SYSTEM_PROMPT}\n\n${appendSystemPrompt}`
+    : HEADLESS_DIRECT_EDIT_APPEND_SYSTEM_PROMPT
+}
+
 // Track message UUIDs received during the current session runtime
 const MAX_RECEIVED_UUIDS = 10_000
 const receivedMessageUuids = new Set<UUID>()
@@ -2180,7 +2194,9 @@ function runHeadlessStreaming(
                 pendingSeeds.clear()
               },
               customSystemPrompt: options.systemPrompt,
-              appendSystemPrompt: options.appendSystemPrompt,
+              appendSystemPrompt: getHeadlessAppendSystemPrompt(
+                options.appendSystemPrompt,
+              ),
               getAppState,
               setAppState,
               abortController,
@@ -2969,7 +2985,9 @@ function runHeadlessStreaming(
                 tools: buildAllTools(appState),
                 agentDefinitions: appState.agentDefinitions,
                 customSystemPrompt: options.systemPrompt,
-                appendSystemPrompt: options.appendSystemPrompt,
+                appendSystemPrompt: getHeadlessAppendSystemPrompt(
+                  options.appendSystemPrompt,
+                ),
               },
             })
             sendControlResponseSuccess(message, { ...data })
@@ -3022,7 +3040,7 @@ function runHeadlessStreaming(
             // expandPath: all other readFileState writers normalize (~, relative,
             // session cwd vs process cwd). FileEditTool looks up by expandPath'd
             // key — a verbatim client path would miss.
-            const normalizedPath = expandPath(message.request.path)
+            const normalizedPath = expandPath(message.request.path, cwd())
             // Check disk mtime before reading content. If the file changed
             // since the client's observation, readFile would return C_current
             // but we'd store it with the client's M_observed — getChangedFiles
@@ -3859,7 +3877,9 @@ function runHeadlessStreaming(
                     getAppState,
                     setAppState,
                     customSystemPrompt: options.systemPrompt,
-                    appendSystemPrompt: options.appendSystemPrompt,
+                    appendSystemPrompt: getHeadlessAppendSystemPrompt(
+                      options.appendSystemPrompt,
+                    ),
                     thinkingConfig: options.thinkingConfig,
                     agents: currentAgents,
                   })
@@ -5036,7 +5056,7 @@ async function loadInitialMessages(
       )
       if (!parsedSessionId) {
         let errorMessage =
-          'Error: --resume requires a valid session ID when used with --print. Usage: claude -p --resume <session-id>'
+          'Error: --resume requires a valid session ID when used with --print. Usage: freeclaude -p --resume <session-id>'
         if (typeof options.resume === 'string') {
           errorMessage += `. Session IDs must be in UUID format (e.g., 550e8400-e29b-41d4-a716-446655440000). Provided value "${options.resume}" is not a valid UUID`
         }

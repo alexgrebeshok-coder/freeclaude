@@ -860,16 +860,21 @@ export async function* executeNonStreamingRequest(
       )
 
       try {
+        const requestOptions = {
+          signal: retryOptions.signal,
+          timeout: fallbackTimeoutMs,
+          ...(isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) &&
+            retryOptions.fallbackModel && {
+              fallbackModel: retryOptions.fallbackModel,
+            }),
+        }
         // biome-ignore lint/plugin: non-streaming API call
         return await anthropic.beta.messages.create(
           {
             ...adjustedParams,
             model: normalizeModelStringForAPI(adjustedParams.model),
           },
-          {
-            signal: retryOptions.signal,
-            timeout: fallbackTimeoutMs,
-          },
+          requestOptions,
         )
       } catch (err) {
         // User aborts are not errors — re-throw immediately without logging
@@ -1820,15 +1825,20 @@ async function* queryModel(
         // BetaMessageStream calls partialParse() on every input_json_delta, which we don't need
         // since we handle tool input accumulation ourselves
         // biome-ignore lint/plugin: main conversation loop handles attribution separately
+        const requestOptions = {
+          signal,
+          ...(clientRequestId && {
+            headers: { [CLIENT_REQUEST_ID_HEADER]: clientRequestId },
+          }),
+          ...(isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI) &&
+            options.fallbackModel && {
+              fallbackModel: options.fallbackModel,
+            }),
+        }
         const result = await anthropic.beta.messages
           .create(
             { ...params, stream: true },
-            {
-              signal,
-              ...(clientRequestId && {
-                headers: { [CLIENT_REQUEST_ID_HEADER]: clientRequestId },
-              }),
-            },
+            requestOptions,
           )
           .withResponse()
         queryCheckpoint('query_response_headers_received')

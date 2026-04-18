@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import React, { useMemo, useRef } from 'react';
 import { useVoiceState } from '../context/voice.js';
 import { useClipboardImageHint } from '../hooks/useClipboardImageHint.js';
+import { colorize } from '../ink/colorize.js';
 import { useSettings } from '../hooks/useSettings.js';
 import { useTextInput } from '../hooks/useTextInput.js';
 import { Box, color, useAnimationFrame, useTerminalFocus, useTheme } from '../ink.js';
@@ -57,8 +58,8 @@ export default function TextInput(props: Props): React.ReactNode {
   // Show hint when terminal regains focus and clipboard has an image
   useClipboardImageHint(isTerminalFocused, !!props.onImagePaste);
 
-  // Cursor invert function: mini waveform during voice recording,
-  // standard chalk.inverse otherwise. No warmup pulse — the ~120ms
+  // Cursor renderer: mini waveform during voice recording,
+  // theme-aware focus cell otherwise. No warmup pulse — the ~120ms
   // warmup window is too short for a 1s-period pulse to register, and
   // driving TextInput re-renders at 50ms during warmup (while spaces
   // are simultaneously arriving every 30-80ms) causes visible stutter.
@@ -87,7 +88,7 @@ export default function TextInput(props: Props): React.ReactNode {
     } : hueToRgb(hue);
     invert = () => chalk.rgb(r, g, b)(BARS[barIndex]!);
   } else {
-    invert = chalk.inverse;
+    invert = (text: string) => colorize(colorize(text, theme.text, 'foreground'), theme.focusBackground, 'background');
   }
   const textInputState = useTextInput({
     value: props.value,

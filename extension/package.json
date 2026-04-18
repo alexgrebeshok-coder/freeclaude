@@ -2,11 +2,23 @@
   "name": "freeclaude",
   "displayName": "FreeClaude",
   "description": "Light companion extension for FreeClaude Desktop and CLI",
-  "version": "3.2.2",
+  "version": "3.2.8",
   "publisher": "alexgrebeshok",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Programming Languages", "Machine Learning", "Chat"],
-  "activationEvents": ["onStartupFinished", "onCommand:freeclaude.chat", "onCommand:freeclaude.explain", "onCommand:freeclaude.fix", "onCommand:freeclaude.tasks"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:freeclaude.chat",
+    "onCommand:freeclaude.explain",
+    "onCommand:freeclaude.fix",
+    "onCommand:freeclaude.tasks"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [

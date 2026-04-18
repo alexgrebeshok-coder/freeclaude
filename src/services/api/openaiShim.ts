@@ -34,7 +34,6 @@ import {
   classifyRoutingGoal,
   describeProviderError,
   isNetworkError,
-  isProviderRestrictionError,
   normalizeProviderError,
   shouldFallback,
 } from './fallbackChain.js'
@@ -177,6 +176,13 @@ function isShimMessage(value: unknown): value is ShimMessage {
 
 function getInnerMessage(message: ShimMessage): { role?: string; content?: MessageContent } {
   return message.message ?? message
+}
+
+function shouldMarkDownProviderOnFallback(
+  statusCode: number,
+  networkError: boolean,
+): boolean {
+  return networkError || statusCode === 401 || statusCode === 403 || statusCode === 429 || statusCode >= 500
 }
 
 function getMessageRole(message: ShimMessage): string {
@@ -907,7 +913,12 @@ class OpenAIShimMessages {
 
   create(
     params: ShimCreateParams,
-    options?: { signal?: AbortSignal; headers?: Record<string, string> },
+    options?: {
+      signal?: AbortSignal
+      headers?: Record<string, string>
+      timeout?: number
+      fallbackModel?: string
+    },
   ) {
     // If fallback chain is enabled (multiple providers), wrap with retry logic
     if (this.fallbackChain.isEnabled()) {
@@ -924,7 +935,12 @@ class OpenAIShimMessages {
    */
   private _createWithFallback(
     params: ShimCreateParams,
-    options?: { signal?: AbortSignal; headers?: Record<string, string> },
+    options?: {
+      signal?: AbortSignal
+      headers?: Record<string, string>
+      timeout?: number
+      fallbackModel?: string
+    },
   ) {
     const self = this
     const chain = this.fallbackChain
@@ -961,7 +977,18 @@ class OpenAIShimMessages {
       const routingGoal = classifyRoutingGoal(userText)
       const explicitProviderName = requestedModelSelection?.providerName
       const explicitModel = requestedModelSelection?.model?.trim() || undefined
-      const hasExplicitModel = Boolean(mainLoopModelOverride && explicitModel)
+      const requestedFallbackSelection = parseProviderQualifiedModel(
+        options?.fallbackModel?.trim(),
+        chain.getProviders(),
+      )
+      const requestedFallbackProvider =
+        requestedFallbackSelection?.providerName
+          ? chain.getProviders().find(
+              provider =>
+                provider.name.toLowerCase() ===
+                requestedFallbackSelection.providerName,
+            )
+          : undefined
       const pinnedProvider =
         explicitProviderName
           ? chain.getProviders().find(
@@ -992,15 +1019,19 @@ class OpenAIShimMessages {
       }
 
       let lastError: Error | null = null
+      let activeExplicitModel = explicitModel
       let useFallbackProviderModel = false
+      let requestedFallbackAttempted = false
       const maxAttempts = chain.getProviders().length
       let startTime = 0
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (!currentProvider) break
+        const hasPinnedModel =
+          Boolean(activeExplicitModel) && !useFallbackProviderModel
         const modelToUse =
-          !useFallbackProviderModel && explicitModel
-            ? explicitModel
+          hasPinnedModel
+            ? (activeExplicitModel ?? currentProvider.model)
             : currentProvider.model
 
         // Override env vars for this provider
@@ -1098,20 +1129,42 @@ class OpenAIShimMessages {
           const normalizedError = normalizeProviderError(error as Error, statusCode)
           lastError = normalizedError
           const networkError = isNetworkError(error as Error)
-          const canFallbackPinnedModel =
-            !useFallbackProviderModel &&
-            hasExplicitModel &&
-            (isProviderRestrictionError(error as Error) || networkError)
+          const fallbackTriggered =
+            shouldFallback(statusCode, error as Error) || networkError
 
-          if (shouldFallback(statusCode, error as Error) || networkError) {
+          if (fallbackTriggered) {
             const reason = describeProviderError(error as Error, statusCode)
-            if (hasExplicitModel && !useFallbackProviderModel && !canFallbackPinnedModel) {
-              console.error(
-                `[FreeClaude] ${currentProvider.name} failed (${reason}), not switching providers because --model is pinned`,
+            const canUseRequestedFallback =
+              !requestedFallbackAttempted &&
+              requestedFallbackSelection?.model &&
+              (
+                requestedFallbackSelection.model !== modelToUse ||
+                requestedFallbackProvider?.name !== currentProvider.name
               )
-              throw normalizedError
+
+            recordLatency(currentProvider.name, Date.now() - startTime, false)
+
+            if (canUseRequestedFallback) {
+              const failedProviderName = currentProvider.name
+              const targetProvider = requestedFallbackProvider ?? currentProvider
+              const targetModel = requestedFallbackSelection.model
+              if (
+                targetProvider.name !== currentProvider.name &&
+                shouldMarkDownProviderOnFallback(statusCode, networkError)
+              ) {
+                chain.markDown(currentProvider.name)
+              }
+              currentProvider = targetProvider
+              activeExplicitModel = targetModel
+              requestedFallbackAttempted = true
+              useFallbackProviderModel = false
+              console.error(
+                `[FreeClaude] ${failedProviderName} failed (${reason}), switching to requested fallback ${targetProvider.name}/${targetModel}...`,
+              )
+              continue
             }
-            if (canFallbackPinnedModel) {
+
+            if (hasPinnedModel) {
               useFallbackProviderModel = true
               console.error(
                 `[FreeClaude] ${currentProvider.name} failed (${reason}), switching to the next configured provider/model...`,
@@ -1121,8 +1174,9 @@ class OpenAIShimMessages {
                 `[FreeClaude] ${currentProvider.name} failed (${reason}), switching...`,
               )
             }
-            recordLatency(currentProvider.name, Date.now() - startTime, false)
-            chain.markDown(currentProvider.name)
+            if (shouldMarkDownProviderOnFallback(statusCode, networkError)) {
+              chain.markDown(currentProvider.name)
+            }
             currentProvider = chain.getNext(currentProvider.name, routingGoal)
           } else {
             throw normalizedError

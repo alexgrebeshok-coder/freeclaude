@@ -89,6 +89,13 @@ export function replaceVoicePipelineVersionAssertions(
   source: string,
   version: string,
 ): string {
+  if (
+    source.includes(`test('cli.mjs contains current package version'`) &&
+    source.includes(`expect(cli).toContain(packageJson.version ?? '')`)
+  ) {
+    return source
+  }
+
   let next = replaceOrThrow(
     source,
     new RegExp(`cli\\.mjs contains ${VERSION_PATTERN.source}`),

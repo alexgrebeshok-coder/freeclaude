@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, describe } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { setMainLoopModelOverride } from '../../bootstrap/state.ts'
 import { createOpenAIShimClient, type OpenAIShimClient } from './openaiShim.ts'
 
 type FetchType = typeof globalThis.fetch
@@ -51,6 +52,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  setMainLoopModelOverride(undefined)
   if (originalEnv.FREECLAUDE_CONFIG_PATH === undefined) {
     delete process.env.FREECLAUDE_CONFIG_PATH
   } else {
@@ -60,6 +62,119 @@ afterEach(() => {
   process.env.OPENAI_API_KEY = originalEnv.OPENAI_API_KEY
   globalThis.fetch = originalFetch
   rmSync(testConfigDir, { force: true, recursive: true })
+})
+
+test('uses the requested fallback model after a pinned-model 400 error', async () => {
+  process.env.FREECLAUDE_CONFIG_PATH = join(testConfigDir, 'config.json')
+  await Bun.write(
+    process.env.FREECLAUDE_CONFIG_PATH,
+    JSON.stringify({
+      enabled: true,
+      providers: [
+        {
+          name: 'openrouter',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          apiKey: 'test-key',
+          model: 'qwen/qwen3-coder-next',
+          priority: 1,
+        },
+        {
+          name: 'zai',
+          baseUrl: 'https://api.z.ai/api/coding/paas/v4',
+          apiKey: 'test-key',
+          model: 'glm-5',
+          priority: 2,
+        },
+      ],
+    }),
+  )
+  setMainLoopModelOverride('openrouter/missing-model')
+
+  const calls: Array<{ url: string; model: string }> = []
+  globalThis.fetch = (async (input, init) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url
+    const body = JSON.parse(String(init?.body)) as { model: string }
+    calls.push({ url, model: body.model })
+
+    if (calls.length === 1) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: 'Model not found',
+          },
+        }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      )
+    }
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-2',
+        model: body.model,
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'fallback worked',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 2,
+          total_tokens: 12,
+        },
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  const result = await client.beta.messages.create(
+    {
+      model: 'ignored-by-openai-shim',
+      system: 'test system',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    },
+    { fallbackModel: 'openrouter/qwen/qwen3-coder-plus' },
+  )
+  const messageResult = result as {
+    content: Array<{ type: string; text: string }>
+  }
+
+  expect(messageResult.content).toEqual([
+    {
+      type: 'text',
+      text: 'fallback worked',
+    },
+  ])
+  expect(calls).toEqual([
+    {
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      model: 'missing-model',
+    },
+    {
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      model: 'qwen/qwen3-coder-plus',
+    },
+  ])
 })
 
 test('preserves usage from final OpenAI stream chunk with empty choices', async () => {

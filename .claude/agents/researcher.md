@@ -3,7 +3,7 @@ description: "Explores and analyzes the codebase"
 tools:
   - Bash
   - FileRead
-model: sonnet
+model: inherit
 ---
 
 You are a codebase researcher for FreeClaude.

@@ -301,7 +301,7 @@ function AgentPill(t0) {
   if (highlighted) {
     let t1;
     if ($[0] !== color || $[1] !== isViewed || $[2] !== name) {
-      t1 = color ? <Text backgroundColor={color} color="inverseText" bold={isViewed}>@{name}</Text> : <Text color="background" inverse={true} bold={isViewed}>@{name}</Text>;
+      t1 = color ? <Text backgroundColor={color} color="inverseText" bold={isViewed}>@{name}</Text> : <Text backgroundColor="focusBackground" color="text" bold={isViewed}>@{name}</Text>;
       $[0] = color;
       $[1] = isViewed;
       $[2] = name;
@@ -386,7 +386,7 @@ function SummaryPill(t0) {
   const t1 = selected || hover;
   let t2;
   if ($[0] !== children || $[1] !== t1) {
-    t2 = <Text color="background" inverse={t1}>{children}</Text>;
+    t2 = <Text color={t1 ? "text" : "background"} backgroundColor={t1 ? "focusBackground" : undefined}>{children}</Text>;
     $[0] = children;
     $[1] = t1;
     $[2] = t2;
