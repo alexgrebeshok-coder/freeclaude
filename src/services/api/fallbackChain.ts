@@ -309,6 +309,15 @@ export function describeProviderError(
     return 'HTTP 403 provider geo/TOS restriction'
   }
 
+  if (error && isNetworkError(error)) {
+    const code = (error as NodeJS.ErrnoException).code
+    return code ? `network error (${code})` : 'network error'
+  }
+
+  if (statusCode === 401) return 'HTTP 401 authentication failed'
+  if (statusCode === 429) return 'HTTP 429 rate limited'
+  if (statusCode >= 500) return `HTTP ${statusCode} server error`
+
   return statusCode > 0
     ? `HTTP ${statusCode}`
     : error?.message?.slice(0, 60) || 'unknown error'
@@ -332,8 +341,9 @@ export function shouldFallback(
   statusCode: number,
   error?: Error,
 ): boolean {
-  void error
-  return FALLBACK_STATUS_CODES.has(statusCode)
+  if (FALLBACK_STATUS_CODES.has(statusCode)) return true
+  if (error && isNetworkError(error)) return true
+  return false
 }
 
 /**

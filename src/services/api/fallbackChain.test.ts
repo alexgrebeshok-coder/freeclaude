@@ -91,6 +91,23 @@ describe('shouldFallback', () => {
     ),
   ).toBe(true))
   test('does NOT trigger on 200 OK', () => expect(shouldFallback(200)).toBe(false))
+
+  // Network errors should trigger fallback even without an HTTP status code
+  test('triggers on ECONNREFUSED network error', () => expect(
+    shouldFallback(0, new Error('connect ECONNREFUSED 127.0.0.1:8080')),
+  ).toBe(true))
+  test('triggers on ETIMEDOUT network error', () => expect(
+    shouldFallback(0, new Error('connect ETIMEDOUT')),
+  ).toBe(true))
+  test('triggers on fetch failed network error', () => expect(
+    shouldFallback(0, new Error('fetch failed')),
+  ).toBe(true))
+  test('does NOT trigger on unknown error without status code', () => expect(
+    shouldFallback(0, new Error('something unexpected')),
+  ).toBe(false))
+  test('does NOT trigger on 200 OK even with network-like error text', () => expect(
+    shouldFallback(200),
+  ).toBe(false))
 })
 
 describe('isProviderRestrictionError', () => {

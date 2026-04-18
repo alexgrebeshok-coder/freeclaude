@@ -1024,6 +1024,7 @@ class OpenAIShimMessages {
       let requestedFallbackAttempted = false
       const maxAttempts = chain.getProviders().length
       let startTime = 0
+      const providerErrors: Array<{ provider: string; model: string; error: string }> = []
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (!currentProvider) break
@@ -1129,8 +1130,13 @@ class OpenAIShimMessages {
           const normalizedError = normalizeProviderError(error as Error, statusCode)
           lastError = normalizedError
           const networkError = isNetworkError(error as Error)
-          const fallbackTriggered =
-            shouldFallback(statusCode, error as Error) || networkError
+          const fallbackTriggered = shouldFallback(statusCode, error as Error)
+
+          providerErrors.push({
+            provider: currentProvider.name,
+            model: modelToUse,
+            error: describeProviderError(error as Error, statusCode),
+          })
 
           if (fallbackTriggered) {
             const reason = describeProviderError(error as Error, statusCode)
@@ -1184,6 +1190,18 @@ class OpenAIShimMessages {
         }
       }
 
+      if (providerErrors.length > 0) {
+        const details = providerErrors
+          .map(e => `  • ${e.provider} (${e.model}): ${e.error}`)
+          .join('\n')
+        throw lastError || new Error(
+          `[FreeClaude] All ${providerErrors.length} providers failed:\n${details}\n\n` +
+          'Suggestions:\n' +
+          '  1. Check your API keys and provider URLs in ~/.freeclaude.json\n' +
+          '  2. Run "freeclaude /doctor" to diagnose connectivity\n' +
+          '  3. Try a different provider with "/model provider/model"',
+        )
+      }
       throw lastError || new Error('[FreeClaude] All providers exhausted')
     })()
 

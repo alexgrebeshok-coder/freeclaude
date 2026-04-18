@@ -3,6 +3,9 @@ export const AGENT_TOOL_NAME = 'Agent'
 export const LEGACY_AGENT_TOOL_NAME = 'Task'
 export const VERIFICATION_AGENT_TYPE = 'verification'
 
+/** Maximum depth for recursive agent spawning to prevent infinite loops */
+export const MAX_AGENT_NESTING_DEPTH = 5
+
 // Built-in agents that run once and return a report — the parent never
 // SendMessages back to continue them. Skip the agentId/SendMessage/usage
 // trailer for these to save tokens (~135 chars × 34M Explore runs/week).

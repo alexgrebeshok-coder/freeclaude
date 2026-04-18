@@ -171,6 +171,6 @@ describe('formatFreeClaudeResult', () => {
         exitCode: 1,
         durationMs: 0,
       }),
-    ).toBe('⚠️ Error: Error: boom')
+    ).toBe('⚠️ Ошибка: Error: boom')
   })
 })

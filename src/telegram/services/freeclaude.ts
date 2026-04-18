@@ -28,9 +28,16 @@ export function formatFreeClaudeResult(result: FreeClaudeResult): string {
     sanitizeStderr(result.stderr).trim() ||
     `FreeClaude exited with code ${result.exitCode}.`
 
+  // Provide duration context for timeouts
+  const durationNote = result.durationMs > 60_000
+    ? ` (${Math.round(result.durationMs / 1000)}s)`
+    : ''
+
+  const errorSummary = `⚠️ Ошибка${durationNote}: ${stderr.slice(0, 500)}`
+
   return stdout
-    ? `${stdout}\n\n⚠️ Error: ${stderr.slice(0, 500)}`
-    : `⚠️ Error: ${stderr.slice(0, 500)}`
+    ? `${stdout}\n\n${errorSummary}`
+    : errorSummary
 }
 
 export class FreeClaudeBridge {

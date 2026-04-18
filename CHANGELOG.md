@@ -2,6 +2,32 @@
 
 All notable changes to FreeClaude are documented in this file.
 
+## [3.2.8] - 2025-07
+
+### Runtime Reliability
+- Fixed `shouldFallback()` to detect network errors (ECONNREFUSED, ETIMEDOUT, fetch failures)
+  and trigger automatic provider fallback
+- Added agent circuit breaker — prevents infinite recursive agent spawns (max depth 5)
+- Improved "all providers exhausted" error with per-provider failure details and recovery suggestions
+- Better `describeProviderError()` with specific messages for 401, 429, 5xx, and network errors
+- Created typed error hierarchy (`freeclaudeErrors.ts`) for structured error handling
+
+### Telegram Bot
+- Smart message splitting: respects code block boundaries and paragraph breaks instead of raw character cuts
+- Progress indicator for long-running requests (shows ⏳ after 3 seconds)
+- Structured error messages with user-friendly explanations (network, rate limit, timeout, provider failures)
+- Localized error output (Russian)
+
+### Testing & CI
+- Added `test:all` script — runs all 114 tests (86 bun + 28 node) in one command
+- Live GitHub Actions CI badge in README (replaces static badge)
+
+### Developer Experience
+- All 86 bun tests + 28 node tests passing
+- Build verified: `dist/cli.mjs`, `dist/telegram.mjs`
+
+---
+
 ## [3.0.0] - 2026-04-12
 
 FreeClaude v3.0.0 is the first launch-ready stable release of the project. It completes the shift from an alpha rebrand into a full multi-surface AI coding agent with desktop, editor, MCP, automation, and packaging support.

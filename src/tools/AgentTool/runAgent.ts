@@ -327,6 +327,16 @@ export async function* runAgent({
    * message is yielded for >60s. */
   onQueryProgress?: () => void
 }): AsyncGenerator<Message, void> {
+  // Circuit breaker: prevent runaway recursive agent spawns
+  const currentDepth = toolUseContext.queryTracking?.depth ?? 0
+  if (currentDepth >= MAX_AGENT_NESTING_DEPTH) {
+    const errorMsg = `Agent nesting depth limit reached (${currentDepth}/${MAX_AGENT_NESTING_DEPTH}). ` +
+      `Refusing to spawn "${agentDefinition.agentType}" to prevent infinite recursion. ` +
+      `Execute the task directly instead of delegating to a sub-agent.`
+    yield createUserMessage({ content: errorMsg })
+    return
+  }
+
   // Track subagent usage for feature discovery
 
   const appState = toolUseContext.getAppState()
