@@ -685,9 +685,12 @@ export class FallbackChain {
     p.errorStreak++
     this.stats.errors[providerName] = (this.stats.errors[providerName] || 0) + 1
 
-    if (p.errorStreak >= 3) {
+    if (p.errorStreak >= 3 && p.markedDownAt === null) {
       p.markedDownAt = Date.now()
+      p.health = 'down'
       this.log('warn', `Provider ${providerName} marked down (3 consecutive errors, cooldown 5 min)`)
+    } else if (p.errorStreak > 0 && p.health === 'healthy') {
+      p.health = 'degraded'
     }
   }
 

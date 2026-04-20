@@ -9,9 +9,17 @@
  * Integrates with inherited SendMessageTool mailbox system.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { randomUUID } from 'node:crypto'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,11 +58,17 @@ export interface AgentResult {
 // Message IDs
 // ---------------------------------------------------------------------------
 
-let _msgCounter = 0
-
+// Counter-based IDs reset on process restart and could collide across
+// concurrent worker processes writing to the same shared mailbox. Use a
+// real UUID so IDs stay unique across restarts, processes, and machines.
 function genMsgId(): string {
-  return `msg-${Date.now()}-${++_msgCounter}`
+  return `msg-${Date.now()}-${randomUUID()}`
 }
+
+// Reserved agent identifiers — never create a directory for these.
+const RESERVED_AGENT_IDS = new Set(['*', 'broadcast'])
+
+const MAX_OUTBOX_MESSAGES = 500
 
 // ---------------------------------------------------------------------------
 // Agent directory
@@ -69,6 +83,7 @@ function agentDir(agentId: string): string {
 }
 
 function ensureAgentDir(agentId: string): void {
+  if (!agentId || RESERVED_AGENT_IDS.has(agentId)) return
   const dir = agentDir(agentId)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
@@ -99,7 +114,11 @@ function readMessages(path: string): AgentMessage[] {
 function writeMessages(path: string, messages: AgentMessage[]): void {
   const dir = join(path, '..')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(path, JSON.stringify(messages, null, 2), 'utf-8')
+  // Atomic write via rename so a concurrent reader never observes a
+  // half-written JSON file — at worst they read the previous snapshot.
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
+  writeFileSync(tmp, JSON.stringify(messages, null, 2), 'utf-8')
+  renameSync(tmp, path)
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +138,17 @@ export function sendMessage(
   payload: Record<string, unknown>,
   ttlMs?: number,
 ): AgentMessage {
-  ensureAgentDir(to === '*' ? 'broadcast' : to)
+  if (!from) {
+    throw new Error('sendMessage: "from" agent id is required')
+  }
+  if (!to) {
+    throw new Error('sendMessage: "to" agent id is required (use "*" for broadcast)')
+  }
+
+  // Don't materialise a bogus "broadcast" directory — the previous
+  // behaviour polluted the agents dir with an empty folder that never
+  // got cleaned up.
+  if (to !== '*') ensureAgentDir(to)
 
   const msg: AgentMessage = {
     id: genMsgId(),
@@ -133,24 +162,32 @@ export function sendMessage(
   }
 
   if (to === '*') {
-    // Broadcast — append to all known agent inboxes
-    const agents = listRegisteredAgents()
-    for (const agentId of agents) {
+    // Broadcast — fan out to every active registered agent (skipping
+    // the sender so an agent doesn't receive its own broadcast).
+    for (const agentId of listRegisteredAgents()) {
+      if (agentId === from) continue
       const inbox = readMessages(inboxPath(agentId))
+      if (inbox.some(existing => existing.id === msg.id)) continue
       inbox.push(msg)
       writeMessages(inboxPath(agentId), inbox)
     }
   } else {
     const inbox = readMessages(inboxPath(to))
-    inbox.push(msg)
-    writeMessages(inboxPath(to), inbox)
+    if (!inbox.some(existing => existing.id === msg.id)) {
+      inbox.push(msg)
+      writeMessages(inboxPath(to), inbox)
+    }
   }
 
-  // Also write to sender's outbox
+  // Record in the sender's outbox, pruned to a sane cap so the file
+  // doesn't grow without bound over long-running sessions.
   ensureAgentDir(from)
   const outbox = readMessages(outboxPath(from))
   outbox.push(msg)
-  writeMessages(outboxPath(from), outbox)
+  const trimmed = outbox.length > MAX_OUTBOX_MESSAGES
+    ? outbox.slice(-MAX_OUTBOX_MESSAGES)
+    : outbox
+  writeMessages(outboxPath(from), trimmed)
 
   return msg
 }
@@ -248,13 +285,19 @@ function loadRegistry(): AgentRegistryEntry[] {
 function saveRegistry(entries: AgentRegistryEntry[]): void {
   const dir = agentsDir()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(registryPath(), JSON.stringify(entries, null, 2), 'utf-8')
+  const path = registryPath()
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
+  writeFileSync(tmp, JSON.stringify(entries, null, 2), 'utf-8')
+  renameSync(tmp, path)
 }
 
 /**
  * Register an agent in the directory.
  */
 export function registerAgent(id: string, capabilities: string[] = []): void {
+  if (!id || RESERVED_AGENT_IDS.has(id)) {
+    throw new Error(`registerAgent: "${id}" is a reserved agent id`)
+  }
   const registry = loadRegistry()
   const existing = registry.findIndex(e => e.id === id)
   const now = new Date().toISOString()
@@ -305,7 +348,28 @@ export function findAgentsByCapability(capability: string): AgentRegistryEntry[]
  * List all registered agents.
  */
 export function listRegisteredAgents(): string[] {
-  return loadRegistry().map(e => e.id)
+  return loadRegistry()
+    .filter(e => e.status === 'active')
+    .map(e => e.id)
+}
+
+/**
+ * Permanently drop an agent from the registry and remove its mailbox
+ * directory. Safe to call for unknown ids.
+ */
+export function unregisterAgent(id: string): boolean {
+  if (!id || RESERVED_AGENT_IDS.has(id)) return false
+  const registry = loadRegistry()
+  const next = registry.filter(e => e.id !== id)
+  const removed = next.length !== registry.length
+  if (removed) saveRegistry(next)
+  try {
+    const dir = agentDir(id)
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
+  } catch {
+    // Best-effort cleanup; leaving the directory behind is non-fatal.
+  }
+  return removed
 }
 
 /**
