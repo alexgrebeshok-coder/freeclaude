@@ -17,8 +17,15 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
+import { fileURLToPath } from 'node:url'
+
+// ESM-safe replacement for the CommonJS `__dirname`. Previously the
+// readiness check used bare `__dirname` inside an ESM module, which is
+// a `ReferenceError` at runtime; the surrounding try/catch silently
+// swallowed it so the bundle-existence diagnostic never fired.
+const CURRENT_MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 
 export interface AgentConfig {
   provider: string
@@ -118,15 +125,21 @@ export function verifyAgentReadiness(): {
     if (!config.model || config.model === 'default') issues.push('No specific model configured')
   }
 
-  // Check if inherited agent infrastructure is available
+  // Check if inherited agent infrastructure is available. The bundle
+  // path is relative to this compiled module, which at runtime sits
+  // inside `dist/` after bundling. The check is best-effort — both the
+  // source and bundled layouts are tried.
   try {
-    // The AgentTool should be in the bundle
-    const bundlePath = join(__dirname, '../../dist/cli.bundle.mjs')
-    if (!existsSync(bundlePath)) {
-      issues.push('cli.bundle.mjs not found')
+    const candidatePaths = [
+      join(CURRENT_MODULE_DIR, '..', '..', '..', 'dist', 'cli.mjs'),
+      join(CURRENT_MODULE_DIR, '..', '..', '..', 'dist', 'cli.bundle.mjs'),
+      join(CURRENT_MODULE_DIR, '..', 'cli.mjs'),
+    ]
+    if (!candidatePaths.some(existsSync)) {
+      issues.push('dist/cli.mjs (or cli.bundle.mjs) not found — run `bun run build`')
     }
   } catch {
-    // Not critical — bundle check is best-effort
+    // Not critical — bundle check is best-effort.
   }
 
   return {

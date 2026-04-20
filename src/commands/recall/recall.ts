@@ -140,10 +140,11 @@ function formatEntry(entry: MemoryEntry, source: string): { type: 'text'; value:
 }
 
 function recordAccessSafe(key: string): void {
-  try {
-    const { recordAccess } = require('../../services/memory/decay.js')
-    recordAccess(key)
-  } catch {
-    // Decay tracking not critical
-  }
+  // ESM modules cannot use `require()`. Do a dynamic import and swallow
+  // any error — decay tracking is best-effort and must never break /recall.
+  import('../../services/memory/decay.js')
+    .then(({ recordAccess }) => {
+      try { recordAccess(key) } catch { /* non-critical */ }
+    })
+    .catch(() => { /* decay module unavailable — ignore */ })
 }

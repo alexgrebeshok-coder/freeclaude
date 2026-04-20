@@ -1,5 +1,18 @@
 import type { LocalCommandCall } from '../../types/command.js'
 import { remember, type MemoryEntry } from '../../services/memory/memoryStore.js'
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
+
+// Strip everything that is not a portable filename char so a malicious
+// `/remember ../../evil ...` cannot traverse outside `~/.freeclaude`.
+function sanitizeFilenameSegment(value: string): string {
+  return value
+    .normalize('NFC')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120) || 'memory'
+}
 
 export const call: LocalCommandCall = async (args) => {
   const trimmed = args.trim()
@@ -42,17 +55,28 @@ export const call: LocalCommandCall = async (args) => {
     indexMemory(key!, value!).catch(() => {})
   }).catch(() => {})
 
-  // Index into GBrain for hybrid search (async, non-blocking)
+  // Index into GBrain for hybrid search (async, non-blocking).
+  // Use proper ESM imports — `require` is not available in ESM modules
+  // and previously threw `ReferenceError: require is not defined` at runtime.
   import('../../services/memory/gbrainClient.js').then(({ importToGBrain, isGBrainAvailable }) => {
-    if (isGBrainAvailable()) {
-      const { writeFileSync, existsSync, mkdirSync } = require('fs')
-      const { join } = require('path')
-      const { homedir } = require('os')
-      const dir = join(homedir(), '.freeclaude')
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-      const tmpPath = join(dir, `memory-${key}.md`)
-      writeFileSync(tmpPath, `# ${key}\n\n${value}\n\nTags: ${(tags ?? []).join(', ')}\n`, 'utf-8')
-      importToGBrain(tmpPath).catch(() => {})
+    if (!isGBrainAvailable()) return
+    const dir = join(homedir(), '.freeclaude')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const safeName = sanitizeFilenameSegment(key!)
+    const tmpPath = join(dir, `memory-${safeName}.md`)
+    try {
+      writeFileSync(
+        tmpPath,
+        `# ${key}\n\n${value}\n\nTags: ${(tags ?? []).join(', ')}\n`,
+        'utf-8',
+      )
+      importToGBrain(tmpPath)
+        .catch(() => {})
+        .finally(() => {
+          try { unlinkSync(tmpPath) } catch { /* best effort cleanup */ }
+        })
+    } catch {
+      /* best effort only — indexing is optional */
     }
   }).catch(() => {})
 
