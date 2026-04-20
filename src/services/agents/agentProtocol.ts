@@ -192,26 +192,55 @@ export function sendMessage(
   return msg
 }
 
+// Acknowledged messages are kept for a short grace window so a caller
+// can still observe them, then pruned so the inbox doesn't grow.
+const ACK_GRACE_MS = 60_000
+
+function isMessageExpired(msg: AgentMessage, now: number): boolean {
+  const msgTime = new Date(msg.timestamp).getTime()
+  if (Number.isNaN(msgTime)) return true
+  if (now - msgTime >= msg.ttlMs) return true
+  if (msg.acknowledged && now - msgTime >= ACK_GRACE_MS) return true
+  return false
+}
+
 /**
  * Read messages from an agent's inbox.
- * Automatically removes expired messages.
+ * Automatically removes expired and stale-acknowledged messages so the
+ * file never grows unbounded on long-lived installs.
  */
 export function readInbox(agentId: string): AgentMessage[] {
   const inbox = readMessages(inboxPath(agentId))
   const now = Date.now()
 
-  // Filter expired messages
-  const active = inbox.filter(msg => {
-    const msgTime = new Date(msg.timestamp).getTime()
-    return now - msgTime < msg.ttlMs
-  })
+  const active = inbox.filter(msg => !isMessageExpired(msg, now))
 
-  // Write back if we removed expired messages
   if (active.length !== inbox.length) {
     writeMessages(inboxPath(agentId), active)
   }
 
   return active
+}
+
+/**
+ * Housekeeping: prune expired / stale-acknowledged messages from every
+ * registered agent's inbox and outbox. Safe to call on a timer; returns
+ * the number of messages removed across all mailboxes.
+ */
+export function pruneExpiredMailboxes(): number {
+  let removed = 0
+  const now = Date.now()
+  for (const agentId of listRegisteredAgents()) {
+    for (const path of [inboxPath(agentId), outboxPath(agentId)]) {
+      const messages = readMessages(path)
+      const active = messages.filter(msg => !isMessageExpired(msg, now))
+      if (active.length !== messages.length) {
+        removed += messages.length - active.length
+        writeMessages(path, active)
+      }
+    }
+  }
+  return removed
 }
 
 /**

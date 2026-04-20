@@ -7,7 +7,13 @@
  * Override storage location with FREECLAUDE_MEMORY_DIR env var (for testing).
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -122,7 +128,13 @@ export function loadMemory(): MemoryStore {
 
 export function saveMemory(store: MemoryStore): void {
   ensureDir()
-  writeFileSync(getMemoryFile(), JSON.stringify(store, null, 2) + '\n')
+  const target = getMemoryFile()
+  // Atomic write — a crash or concurrent reader during write never
+  // observes a half-written JSON file. At worst they read the previous
+  // snapshot until the rename lands.
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`
+  writeFileSync(tmp, JSON.stringify(store, null, 2) + '\n', 'utf-8')
+  renameSync(tmp, target)
 }
 
 export type RememberOptions = {

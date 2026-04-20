@@ -741,8 +741,45 @@ export class FallbackChain {
       if (p.markedDownAt !== null && now - p.markedDownAt > cooldownMs) {
         p.markedDownAt = null
         p.errorStreak = 0
-        this.log('info', `Provider ${p.name} recovered from cooldown`)
+        // Mark as unknown rather than healthy: the provider is eligible
+        // for routing again, but the next request is effectively a
+        // half-open probe. If it succeeds markSuccess() will flip the
+        // state to healthy; if it fails markDown() will drive it back
+        // to degraded/down.
+        p.health = 'unknown'
+        this.log('info', `Provider ${p.name} recovered from cooldown (half-open probe)`)
       }
+    }
+  }
+
+  // ---- Background health scheduling ----
+
+  private healthTimer: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * Start a periodic health check. The first run happens after `intervalMs`;
+   * call stopHealthScheduler() to tear it down. Safe to call twice — any
+   * previous timer is cleared first. Idle callers (no providers) are a
+   * no-op.
+   */
+  startHealthScheduler(intervalMs = 5 * 60 * 1000): void {
+    this.stopHealthScheduler()
+    if (this.providers.length === 0) return
+    this.healthTimer = setInterval(() => {
+      this.healthCheckAll().catch(() => {
+        /* best-effort — scheduler must never throw */
+      })
+    }, intervalMs)
+    // Don't keep the event loop alive solely because of this timer.
+    if (typeof this.healthTimer?.unref === 'function') {
+      this.healthTimer.unref()
+    }
+  }
+
+  stopHealthScheduler(): void {
+    if (this.healthTimer) {
+      clearInterval(this.healthTimer)
+      this.healthTimer = null
     }
   }
 
