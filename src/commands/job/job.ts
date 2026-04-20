@@ -1,106 +1,21 @@
 /**
  * FreeClaude v3 — /job Command Implementation
  *
- * View output of a specific background task by ID. Reads from the new
- * per-job record files, falls back to the append-only index.jsonl for
- * legacy installs, and streams the latest bytes from the detached log
- * file when the task is still running.
+ * View output of a specific background task by ID. All persistence and
+ * log-tailing logic lives in services/jobs/jobStore so the three job
+ * commands stay in lockstep.
  */
 
 import type { LocalCommandCall } from '../../types/command.js'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
+import {
+  logFileAgeSeconds,
+  readAllJobs,
+  tailLog,
+  type JobRecord,
+} from '../../services/jobs/jobStore.js'
 
-const JOBS_DIR = join(homedir(), '.freeclaude', 'jobs')
-const RECORDS_DIR = join(JOBS_DIR, 'records')
-const LOGS_DIR = join(JOBS_DIR, 'logs')
-const INDEX_PATH = join(JOBS_DIR, 'index.jsonl')
-
-type JobStatus = 'running' | 'completed' | 'failed' | 'stale'
-
-type JobRecord = {
-  id: string
-  prompt: string
-  status: JobStatus
-  createdAt: string
-  completedAt?: string
-  exitCode?: number
-  pid?: number
-  output?: string
-  logPath?: string
-}
-
-function isProcessAlive(pid: number | undefined): boolean {
-  if (!pid || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function readAllJobs(): JobRecord[] {
-  const byId = new Map<string, JobRecord>()
-
-  if (existsSync(INDEX_PATH)) {
-    for (const line of readFileSync(INDEX_PATH, 'utf-8').split('\n')) {
-      if (!line) continue
-      try {
-        const record = JSON.parse(line) as JobRecord
-        if (record?.id) byId.set(record.id, record)
-      } catch {
-        /* skip malformed */
-      }
-    }
-  }
-
-  if (existsSync(RECORDS_DIR)) {
-    for (const name of readdirSync(RECORDS_DIR)) {
-      if (!name.endsWith('.json')) continue
-      try {
-        const record = JSON.parse(
-          readFileSync(join(RECORDS_DIR, name), 'utf-8'),
-        ) as JobRecord
-        if (record?.id) byId.set(record.id, record)
-      } catch {
-        /* skip malformed */
-      }
-    }
-  }
-
-  const jobs = Array.from(byId.values())
-  for (const job of jobs) {
-    if (job.status === 'running' && !isProcessAlive(job.pid)) {
-      job.status = 'stale'
-    }
-  }
-
-  return jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-}
-
-function tailLog(job: JobRecord, maxBytes: number): string | undefined {
-  const candidate = job.logPath ?? join(LOGS_DIR, `${job.id}.log`)
-  if (!existsSync(candidate)) return undefined
-  try {
-    const data = readFileSync(candidate, 'utf-8')
-    return data.length > maxBytes ? '...(truncated)\n' + data.slice(-maxBytes) : data
-  } catch {
-    return undefined
-  }
-}
-
-function logFileAgeSeconds(job: JobRecord): number | null {
-  const candidate = job.logPath ?? join(LOGS_DIR, `${job.id}.log`)
-  if (!existsSync(candidate)) return null
-  try {
-    const stats = statSync(candidate)
-    return Math.max(0, Math.floor((Date.now() - stats.mtimeMs) / 1000))
-  } catch {
-    return null
-  }
-}
+const LIVE_TAIL_BYTES = 3000
+const SNAPSHOT_TAIL_BYTES = 3000
 
 export const call: LocalCommandCall = async (args) => {
   const targetId = args.trim()
@@ -150,14 +65,14 @@ function formatJobOutput(job: JobRecord): string {
     '',
   ]
 
-  const liveTail = tailLog(job, 3000)
+  const liveTail = tailLog(job, LIVE_TAIL_BYTES)
   if (liveTail && liveTail.trim()) {
     lines.push('--- Output (tail) ---')
     lines.push(liveTail)
   } else if (job.output) {
     lines.push('--- Output ---')
-    const output = job.output.length > 3000
-      ? '...(truncated)\n' + job.output.slice(-3000)
+    const output = job.output.length > SNAPSHOT_TAIL_BYTES
+      ? '...(truncated)\n' + job.output.slice(-SNAPSHOT_TAIL_BYTES)
       : job.output
     lines.push(output)
   } else if (job.status === 'running') {

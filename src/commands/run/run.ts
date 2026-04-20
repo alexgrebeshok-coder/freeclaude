@@ -3,125 +3,29 @@
  *
  * Spawns a detached background CLI run. Output is captured via file
  * descriptors (not the parent's stdio pipes) so the child survives after
- * the REPL exits. Job status is persisted as a per-job JSON file so
- * listing never shows duplicate records even after repeated append/update
- * cycles. The index.jsonl file is kept as an append-only audit log.
+ * the REPL exits. Job persistence is delegated to services/jobs/jobStore
+ * so /run, /jobs, and /job all read and write through a single surface.
  */
 
 import type { LocalCommandCall } from '../../types/command.js'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { closeSync, openSync } from 'node:fs'
 import {
-  appendFileSync,
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs'
-import { homedir } from 'node:os'
+  ensureJobDirs,
+  logPathFor,
+  pruneOldJobs,
+  saveJob,
+  tailLog,
+  type JobRecord,
+} from '../../services/jobs/jobStore.js'
 
-const JOBS_DIR = join(homedir(), '.freeclaude', 'jobs')
-const RECORDS_DIR = join(JOBS_DIR, 'records')
-const LOGS_DIR = join(JOBS_DIR, 'logs')
-const INDEX_PATH = join(JOBS_DIR, 'index.jsonl')
 const MAX_OUTPUT_SNAPSHOT_BYTES = 10_000
 
-export type JobRecord = {
-  id: string
-  prompt: string
-  status: 'running' | 'completed' | 'failed'
-  createdAt: string
-  completedAt?: string
-  exitCode?: number
-  pid?: number
-  output?: string
-  logPath?: string
-}
-
-function ensureDirs(): void {
-  for (const dir of [JOBS_DIR, RECORDS_DIR, LOGS_DIR]) {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  }
-}
-
-function recordPath(id: string): string {
-  return join(RECORDS_DIR, `${id}.json`)
-}
-
-function logPath(id: string): string {
-  return join(LOGS_DIR, `${id}.log`)
-}
-
-function writeJsonAtomic(path: string, value: unknown): void {
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
-  writeFileSync(tmp, JSON.stringify(value, null, 2) + '\n', 'utf-8')
-  renameSync(tmp, path)
-}
-
-function appendIndex(job: JobRecord): void {
-  ensureDirs()
-  appendFileSync(INDEX_PATH, JSON.stringify(job) + '\n', 'utf-8')
-}
-
-function saveJob(job: JobRecord): void {
-  ensureDirs()
-  writeJsonAtomic(recordPath(job.id), job)
-  appendIndex(job)
-}
-
-function loadJobRecord(id: string): JobRecord | null {
-  try {
-    return JSON.parse(readFileSync(recordPath(id), 'utf-8')) as JobRecord
-  } catch {
-    return null
-  }
-}
-
-function tailLog(path: string, maxBytes: number): string {
-  try {
-    const data = readFileSync(path, 'utf-8')
-    return data.length > maxBytes ? data.slice(-maxBytes) : data
-  } catch {
-    return ''
-  }
-}
-
-// Backwards-compatible reader: prefer per-job record files (new format),
-// fall back to the legacy index.jsonl entries (latest wins per id).
-export function readAllJobs(): JobRecord[] {
-  ensureDirs()
-
-  const byId = new Map<string, JobRecord>()
-
-  if (existsSync(INDEX_PATH)) {
-    for (const line of readFileSync(INDEX_PATH, 'utf-8').split('\n')) {
-      if (!line) continue
-      try {
-        const record = JSON.parse(line) as JobRecord
-        if (record?.id) byId.set(record.id, record)
-      } catch {
-        /* ignore malformed lines */
-      }
-    }
-  }
-
-  if (existsSync(RECORDS_DIR)) {
-    for (const name of readdirSync(RECORDS_DIR)) {
-      if (!name.endsWith('.json')) continue
-      const record = loadJobRecord(name.slice(0, -'.json'.length))
-      if (record?.id) byId.set(record.id, record)
-    }
-  }
-
-  return Array.from(byId.values()).sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
-  )
-}
+// Re-export for backwards compatibility with any callers still importing
+// readAllJobs from this module.
+export { readAllJobs, type JobRecord } from '../../services/jobs/jobStore.js'
 
 export const call: LocalCommandCall = async (args) => {
   const trimmed = args.trim()
@@ -142,11 +46,15 @@ export const call: LocalCommandCall = async (args) => {
     }
   }
 
-  ensureDirs()
+  ensureJobDirs()
+  // Opportunistic housekeeping — keeps jobs/ from growing unbounded on
+  // long-lived installs. Fully best-effort: any filesystem hiccup is
+  // swallowed so the actual /run command never fails because of it.
+  try { pruneOldJobs() } catch { /* non-critical */ }
 
   const jobId = randomUUID().slice(0, 8)
   const cliPath = join(import.meta.dir, '..', '..', '..', 'dist', 'cli.mjs')
-  const jobLogPath = logPath(jobId)
+  const jobLogPath = logPathFor(jobId)
 
   // Open a dedicated log file so the detached child writes directly to
   // disk. This keeps output flowing even after the REPL exits — the
@@ -184,15 +92,15 @@ export const call: LocalCommandCall = async (args) => {
   saveJob(job)
 
   // `on('close')` only fires while the parent process is alive. Record
-  // a best-effort completion snapshot here, but the authoritative status
-  // can always be rebuilt by `/jobs` by inspecting the pid liveness.
+  // a best-effort completion snapshot here; authoritative state can be
+  // rebuilt later from the log file + pid liveness check.
   child.on('close', (code) => {
     const finalRecord: JobRecord = {
       ...job,
       status: code === 0 ? 'completed' : 'failed',
       exitCode: code ?? undefined,
       completedAt: new Date().toISOString(),
-      output: tailLog(jobLogPath, MAX_OUTPUT_SNAPSHOT_BYTES),
+      output: tailLog(job, MAX_OUTPUT_SNAPSHOT_BYTES),
     }
     try { saveJob(finalRecord) } catch { /* non-critical */ }
   })

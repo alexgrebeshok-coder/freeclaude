@@ -51,7 +51,8 @@
     "src/services/context/degradation.ts",
     "src/services/context/providerWindows.ts",
     "src/services/tasks/protocol/types.ts",
-    "src/services/tasks/protocol/taskProtocol.ts"
+    "src/services/tasks/protocol/taskProtocol.ts",
+    "src/services/jobs/jobStore.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
