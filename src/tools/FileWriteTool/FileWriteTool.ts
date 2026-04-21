@@ -34,6 +34,7 @@ import {
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { expandPath } from '../../utils/path.js'
+import { withTimeout } from '../../utils/sleep.js'
 import {
   checkWritePermissionForTool,
   matchingRuleForInput,
@@ -255,15 +256,16 @@ export const FileWriteTool = buildTool({
     // check and writeTextContent lets concurrent edits interleave), and BEFORE the
     // write (lazy-mkdir-on-ENOENT would fire a spurious tengu_atomic_write_error
     // inside writeFileSyncAndFlush_DEPRECATED before ENOENT propagates back).
-    await getFsImplementation().mkdir(dir)
+    await withTimeout(
+      getFsImplementation().mkdir(dir),
+      10_000,
+      `mkdir(${dir}) timed out after 10s`,
+    )
     if (fileHistoryEnabled()) {
-      // Backup captures pre-edit content — safe to call before the staleness
-      // check (idempotent v1 backup keyed on content hash; if staleness fails
-      // later we just have an unused backup, not corrupt state).
-      await fileHistoryTrackEdit(
-        updateFileHistoryState,
-        fullFilePath,
-        parentMessage.uuid,
+      await withTimeout(
+        fileHistoryTrackEdit(updateFileHistoryState, fullFilePath, parentMessage.uuid),
+        10_000,
+        `fileHistoryTrackEdit(${fullFilePath}) timed out after 10s`,
       )
     }
 
@@ -351,7 +353,11 @@ export const FileWriteTool = buildTool({
       getFeatureValue_CACHED_MAY_BE_STALE('tengu_quartz_lantern', false)
     ) {
       const startTime = Date.now()
-      const diff = await fetchSingleFileGitDiff(fullFilePath)
+      const diff = await withTimeout(
+        fetchSingleFileGitDiff(fullFilePath),
+        15_000,
+        `fetchSingleFileGitDiff(${fullFilePath}) timed out after 15s`,
+      )
       if (diff) gitDiff = diff
       logEvent('tengu_tool_use_diff_computed', {
         isWriteTool: true,

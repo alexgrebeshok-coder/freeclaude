@@ -58,7 +58,7 @@ import {
 } from './utils/fileStateCache.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.js'
-import { getInMemoryErrors } from './utils/log.js'
+import { getInMemoryErrors, logError } from './utils/log.js'
 import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
 import {
   getMainLoopModel,
@@ -450,7 +450,7 @@ export class QueryEngine {
     if (persistSession && messagesFromUserInput.length > 0) {
       const transcriptPromise = recordTranscript(messages)
       if (isBareMode()) {
-        void transcriptPromise
+        transcriptPromise.catch(logError)
       } else {
         await transcriptPromise
         if (
@@ -642,7 +642,7 @@ export class QueryEngine {
       messagesFromUserInput
         .filter(messageSelector().selectableUserMessagesFilter)
         .forEach(message => {
-          void fileHistoryMakeSnapshot(
+          fileHistoryMakeSnapshot(
             (updater: (prev: FileHistoryState) => FileHistoryState) => {
               setAppState(prev => ({
                 ...prev,
@@ -650,7 +650,7 @@ export class QueryEngine {
               }))
             },
             message.uuid,
-          )
+          ).catch(logError)
         })
     }
 
@@ -725,7 +725,7 @@ export class QueryEngine {
           // useLogMessages.ts fire-and-forgets. enqueueWrite is
           // order-preserving so fire-and-forget here is safe.
           if (message.type === 'assistant') {
-            void recordTranscript(messages)
+            recordTranscript(messages).catch(logError)
           } else {
             await recordTranscript(messages)
           }
@@ -777,7 +777,7 @@ export class QueryEngine {
           // forking the chain and orphaning the conversation on resume.
           if (persistSession) {
             messages.push(message)
-            void recordTranscript(messages)
+            recordTranscript(messages).catch(logError)
           }
           yield* normalizeMessage(message)
           break
@@ -831,7 +831,7 @@ export class QueryEngine {
           // Record inline (same reason as progress above).
           if (persistSession) {
             messages.push(message)
-            void recordTranscript(messages)
+            recordTranscript(messages).catch(logError)
           }
 
           // Extract structured output from StructuredOutput tool calls
