@@ -34,7 +34,8 @@ export default function VimTextInput(props) {
   // the outer terminal has lost focus — otherwise the block cursor becomes
   // indistinguishable from regular whitespace and the user can't tell where
   // they're typing. At chalk.level === 0 fall back to a printable glyph.
-  const t14 = chalk.level > 0 ? (text) => colorize(colorize(text, theme.text, 'foreground'), theme.focusBackground, 'background') : _fallbackInvert;
+  // On color terminals force white-on-black caret for maximum contrast.
+  const t14 = chalk.level > 0 ? (text) => chalk.white.bgBlack(text || ' ') : _fallbackInvert;
   let t15;
   if ($[0] !== theme) {
     t15 = color("text", theme);

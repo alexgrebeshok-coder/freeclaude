@@ -100,7 +100,9 @@ export default function TextInput(props: Props): React.ReactNode {
     } : hueToRgb(hue);
     invert = () => chalk.rgb(r, g, b)(BARS[barIndex]!);
   } else if (hasColorSupport) {
-    invert = (text: string) => colorize(colorize(text, theme.text, 'foreground'), theme.focusBackground, 'background');
+    // Force a high-contrast caret cell: white glyph on black background.
+    // This avoids "invisible cursor on light terminal themes".
+    invert = (text: string) => chalk.white.bgBlack(text || ' ');
   } else {
     // No color support: substitute a printable glyph for empty/whitespace
     // caret cells, and wrap normal text with SGR 7 (inverse) which even
