@@ -866,3 +866,31 @@ export class FallbackChain {
     }))
   }
 }
+
+// ---------------------------------------------------------------------------
+// Shared instance
+//
+// Long-running hosts (Telegram bot, background job worker) want a single
+// FallbackChain they can register a health-check scheduler on. Callers
+// that need isolation — tests, ad-hoc scripts — keep using `new
+// FallbackChain()` directly.
+// ---------------------------------------------------------------------------
+
+let sharedInstance: FallbackChain | null = null
+
+export function getSharedFallbackChain(): FallbackChain {
+  if (sharedInstance === null) {
+    sharedInstance = new FallbackChain()
+  }
+  return sharedInstance
+}
+
+// Exposed for tests — resets the module-level singleton so subsequent
+// calls pick up a fresh config. Safe to call at any time; the stopped
+// chain will have its health scheduler torn down first.
+export function resetSharedFallbackChain(): void {
+  if (sharedInstance !== null) {
+    try { sharedInstance.stopHealthScheduler() } catch { /* best effort */ }
+  }
+  sharedInstance = null
+}

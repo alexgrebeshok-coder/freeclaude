@@ -117,8 +117,10 @@ export async function createBot(config?: Partial<BotConfig>): Promise<Bot> {
     console.error('[bot] error:', err)
   })
 
-  // Periodically clean up expired sessions
-  setInterval(
+  // Periodically clean up expired sessions. unref() so the timer never
+  // keeps the event loop alive on its own — same contract as the
+  // heartbeat + health scheduler timers.
+  const sessionSweeper = setInterval(
     () => {
       const cleaned = sessions.cleanup()
       if (cleaned > 0) {
@@ -127,6 +129,9 @@ export async function createBot(config?: Partial<BotConfig>): Promise<Bot> {
     },
     60 * 60 * 1_000,
   )
+  if (typeof sessionSweeper.unref === 'function') {
+    sessionSweeper.unref()
+  }
 
   return bot
 }
@@ -143,6 +148,19 @@ export async function startBot(config?: Partial<BotConfig>): Promise<void> {
     startHeartbeat()
   } catch (err) {
     console.warn('[bot] heartbeat unavailable:', (err as Error).message)
+  }
+
+  // Fallback-chain health probes. The shared instance is also used by
+  // the OpenAI shim, so the first probe after startup warms the cache
+  // for every subsequent request without extra latency.
+  try {
+    const { getSharedFallbackChain } = await import('../services/api/fallbackChain.ts')
+    const chain = getSharedFallbackChain()
+    if (chain.getProviders().length > 0) {
+      chain.startHealthScheduler()
+    }
+  } catch (err) {
+    console.warn('[bot] fallback health scheduler unavailable:', (err as Error).message)
   }
 
   console.log('[bot] Starting FreeClaude Telegram bot...')

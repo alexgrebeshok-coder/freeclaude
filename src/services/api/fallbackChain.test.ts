@@ -286,4 +286,69 @@ describe('FallbackChain', () => {
     const chain = new FallbackChain()
     expect(chain.getCurrent('chat')?.name).toBe('ollama')
   })
+
+  describe('health scheduler', () => {
+    test('startHealthScheduler is idempotent and stopHealthScheduler tears it down', () => {
+      const chain = new FallbackChain()
+      // Calling twice must not leak two interval timers. We can't directly
+      // inspect the private field, but we can assert it doesn't throw and
+      // that stop() unwinds cleanly.
+      chain.startHealthScheduler(50)
+      chain.startHealthScheduler(50)
+      chain.stopHealthScheduler()
+      chain.stopHealthScheduler() // second stop is a no-op
+    })
+
+    test('startHealthScheduler invokes healthCheckAll on an interval', async () => {
+      const chain = new FallbackChain()
+      let calls = 0
+      const original = (chain as unknown as { healthCheckAll: () => Promise<unknown> }).healthCheckAll.bind(chain)
+      ;(chain as unknown as { healthCheckAll: () => Promise<unknown> }).healthCheckAll = async () => {
+        calls++
+        return original()
+      }
+
+      try {
+        chain.startHealthScheduler(20)
+        // Give the timer a couple of ticks. Node's setInterval is not
+        // perfectly precise so we wait a bit longer than 2 × intervalMs.
+        await new Promise(resolve => setTimeout(resolve, 80))
+        expect(calls).toBeGreaterThanOrEqual(2)
+      } finally {
+        chain.stopHealthScheduler()
+      }
+    })
+
+    test('startHealthScheduler tolerates an empty provider list without throwing', () => {
+      writeFileSync(testConfigPath, JSON.stringify({ providers: [], enabled: false }))
+      const chain = new FallbackChain()
+      // Must not throw even if the runtime appends env-backed providers
+      // (OPENROUTER_API_KEY is scrubbed in beforeEach, so the list is
+      // typically empty — but we don't over-constrain that here).
+      chain.startHealthScheduler(10)
+      chain.stopHealthScheduler()
+    })
+
+    test('markDown transitions healthy → degraded → down after three errors', () => {
+      const chain = new FallbackChain()
+      const name = chain.getCurrent()!.name
+      const healthOf = (n: string) =>
+        chain.getProviderHealth().find(p => p.name === n)!.health
+
+      // Put the provider into the 'healthy' bucket first — otherwise the
+      // initial 'unknown' state intentionally stays unknown on a single
+      // error so we can tell "never probed" apart from "known-degraded".
+      chain.markSuccess(name)
+      expect(healthOf(name)).toBe('healthy')
+
+      // One error → degraded, still in rotation.
+      chain.markDown(name)
+      expect(healthOf(name)).toBe('degraded')
+
+      // Three consecutive errors → down + cooldown.
+      chain.markDown(name)
+      chain.markDown(name)
+      expect(healthOf(name)).toBe('down')
+    })
+  })
 })
