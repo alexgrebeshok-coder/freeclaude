@@ -28,10 +28,24 @@ import {
   isEnvTruthy,
 } from '../../utils/envUtils.js'
 
-const importRuntimeModule = new Function(
-  'specifier',
-  'return import(specifier)',
-) as (specifier: string) => Promise<any>
+// Dynamic import wrapper — prevents bundlers (esbuild/rollup) from statically
+// analysing and bundling optional peer dependencies.  All callers pass only
+// the hardcoded string literals listed in ALLOWED_RUNTIME_MODULES.
+const ALLOWED_RUNTIME_MODULES = new Set([
+  '@anthropic-ai/foundry-sdk',
+  '@azure/identity',
+  '@anthropic-ai/vertex-sdk',
+  'google-auth-library',
+])
+
+const _dynamicImport = new Function('s', 'return import(s)') as (s: string) => Promise<any>
+
+function importRuntimeModule(specifier: string): Promise<any> {
+  if (!ALLOWED_RUNTIME_MODULES.has(specifier)) {
+    throw new Error(`importRuntimeModule: '${specifier}' is not an allowed module specifier`)
+  }
+  return _dynamicImport(specifier)
+}
 
 /**
  * Environment variables for different client types:

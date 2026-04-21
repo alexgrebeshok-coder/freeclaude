@@ -235,7 +235,8 @@ function getResultUsage(result: unknown): ResultUsage | undefined {
 function getReasoningContent(
   message: NonStreamingChoiceMessage | undefined,
 ): string | null | undefined {
-  return message?.content ?? message?.reasoning_content
+  // Use || so an empty string falls through to reasoning_content
+  return message?.content || message?.reasoning_content || null
 }
 
 function getMaxCompletionTokens(params: ShimCreateParams): number | undefined {
@@ -827,6 +828,9 @@ async function* openaiStreamToAnthropic(
                     break
                   } catch {}
                 }
+                if (suffixToAdd) {
+                  console.error(`[FreeClaude] heuristic JSON repair: appended "${suffixToAdd}" to truncated tool-call input for tool index ${tc.index}`)
+                }
               }
             }
 
@@ -1035,24 +1039,21 @@ class OpenAIShimMessages {
             ? (activeExplicitModel ?? currentProvider.model)
             : currentProvider.model
 
-        // Override env vars for this provider
-        const prevApiKey = process.env.OPENAI_API_KEY
-        const prevBaseUrl = process.env.OPENAI_BASE_URL
-        const prevModel = process.env.OPENAI_MODEL
-
-        process.env.OPENAI_API_KEY = currentProvider.apiKey
-        process.env.OPENAI_BASE_URL = currentProvider.baseUrl
-        process.env.OPENAI_MODEL = modelToUse
-
         try {
           startTime = Date.now()
           const result = await self._createSingle(
             { ...params, model: modelToUse },
-            options,
+            {
+              ...options,
+              providerOverride: {
+                apiKey: currentProvider.apiKey,
+                baseUrl: currentProvider.baseUrl,
+                model: modelToUse,
+              },
+            },
           )
           const durationMs = Date.now() - startTime
           chain.markSuccess(currentProvider.name)
-          self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
 
           // Log usage — prefer actual API token counts when available
           const promptText = typeof params.messages === 'string'
@@ -1123,8 +1124,6 @@ class OpenAIShimMessages {
 
           return result
         } catch (error) {
-          self._restoreEnv(prevApiKey, prevBaseUrl, prevModel)
-
           const match = (error as Error).message?.match(/OpenAI API error (\d+):/)
           const statusCode = match ? parseInt(match[1], 10) : 0
           const normalizedError = normalizeProviderError(error as Error, statusCode)
@@ -1208,32 +1207,26 @@ class OpenAIShimMessages {
     return attachWithResponse(promise)
   }
 
-  private _restoreEnv(
-    prevApiKey: string | undefined,
-    prevBaseUrl: string | undefined,
-    prevModel: string | undefined,
-  ): void {
-    if (prevApiKey !== undefined) process.env.OPENAI_API_KEY = prevApiKey
-    else delete process.env.OPENAI_API_KEY
-    if (prevBaseUrl !== undefined) process.env.OPENAI_BASE_URL = prevBaseUrl
-    else delete process.env.OPENAI_BASE_URL
-    if (prevModel !== undefined) process.env.OPENAI_MODEL = prevModel
-    else delete process.env.OPENAI_MODEL
-  }
-
   /**
    * Original create logic (single provider, no fallback).
    */
   private _createSingle(
     params: ShimCreateParams,
-    options?: { signal?: AbortSignal; headers?: Record<string, string> },
+    options?: {
+      signal?: AbortSignal
+      headers?: Record<string, string>
+      providerOverride?: { apiKey: string; baseUrl: string; model: string }
+    },
   ) {
     const self = this
 
     const promise = (async () => {
-      const request = resolveProviderRequest({ model: params.model })
+      const request = resolveProviderRequest({
+        model: params.model,
+        baseUrl: options?.providerOverride?.baseUrl,
+      })
       const response = await self._doRequest(request, params, options)
-      const runtimeModel = process.env.OPENAI_MODEL?.trim() || request.resolvedModel
+      const runtimeModel = options?.providerOverride?.model || request.resolvedModel
 
       if (params.stream) {
         return new OpenAIShimStream(
@@ -1261,7 +1254,11 @@ class OpenAIShimMessages {
   private async _doRequest(
     request: ReturnType<typeof resolveProviderRequest>,
     params: ShimCreateParams,
-    options?: { signal?: AbortSignal; headers?: Record<string, string> },
+    options?: {
+      signal?: AbortSignal
+      headers?: Record<string, string>
+      providerOverride?: { apiKey: string; baseUrl: string; model: string }
+    },
   ): Promise<Response> {
     if (request.transport === 'codex_responses') {
       const credentials = resolveCodexApiCredentials()
@@ -1297,7 +1294,11 @@ class OpenAIShimMessages {
   private async _doOpenAIRequest(
     request: ReturnType<typeof resolveProviderRequest>,
     params: ShimCreateParams,
-    options?: { signal?: AbortSignal; headers?: Record<string, string> },
+    options?: {
+      signal?: AbortSignal
+      headers?: Record<string, string>
+      providerOverride?: { apiKey: string; baseUrl: string; model: string }
+    },
   ): Promise<Response> {
     const openaiMessages = convertMessages(
       params.messages as ShimMessage[],
@@ -1364,7 +1365,7 @@ class OpenAIShimMessages {
       ...(options?.headers ?? {}),
     }
 
-    const apiKey = process.env.OPENAI_API_KEY ?? ''
+    const apiKey = options?.providerOverride?.apiKey ?? process.env.OPENAI_API_KEY ?? ''
     const isAzure = /cognitiveservices\.azure\.com|openai\.azure\.com/.test(request.baseUrl)
     const isGigaChat = isGigaChatUrl(request.baseUrl)
 

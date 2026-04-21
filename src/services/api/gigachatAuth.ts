@@ -22,6 +22,8 @@ interface TokenResponse {
 
 let cachedToken: string | null = null
 let tokenExpiresAt = 0
+// Promise shared across concurrent callers during an in-flight token refresh.
+let refreshPromise: Promise<string> | null = null
 
 /**
  * Get a valid GigaChat access token, using cache if available.
@@ -37,35 +39,47 @@ export async function getGigaChatToken(
     return cachedToken
   }
 
-  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
-
-  const response = await fetch(GIGACHAT_AUTH_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${basicAuth}`,
-      'RqUID': crypto.randomUUID(),
-    },
-    body: 'scope=GIGACHAT_API_PERS',
-  })
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => 'unknown error')
-    throw new Error(`GigaChat OAuth error ${response.status}: ${errorBody}`)
+  // Deduplicate concurrent token refreshes — all callers share one pending request
+  if (refreshPromise) {
+    return refreshPromise
   }
 
-  const data = (await response.json()) as TokenResponse
+  refreshPromise = (async () => {
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
 
-  cachedToken = data.access_token
-  tokenExpiresAt = data.expires_at
+    const response = await fetch(GIGACHAT_AUTH_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${basicAuth}`,
+        'RqUID': crypto.randomUUID(),
+      },
+      body: 'scope=GIGACHAT_API_PERS',
+    })
 
-  return cachedToken
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'unknown error')
+      throw new Error(`GigaChat OAuth error ${response.status}: ${errorBody}`)
+    }
+
+    const data = (await response.json()) as TokenResponse
+
+    cachedToken = data.access_token
+    tokenExpiresAt = data.expires_at
+
+    return cachedToken
+  })().finally(() => {
+    refreshPromise = null
+  })
+
+  return refreshPromise
 }
 
 /** Reset token cache (for testing or forced refresh). */
 export function resetGigaChatTokenCache(): void {
   cachedToken = null
   tokenExpiresAt = 0
+  refreshPromise = null
 }
 
 /** Check if a base URL belongs to GigaChat. */

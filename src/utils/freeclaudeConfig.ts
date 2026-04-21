@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -284,6 +284,8 @@ export function getFreeClaudeConfigPath(): string {
   return process.env.FREECLAUDE_CONFIG_PATH || join(homedir(), '.freeclaude.json')
 }
 
+const CONFIG_MAX_SIZE_BYTES = 1 * 1024 * 1024 // 1 MB sanity limit
+
 export function readFreeClaudeConfig(): FreeClaudeConfig | null {
   const configPath = getFreeClaudeConfigPath()
   if (!existsSync(configPath)) {
@@ -291,18 +293,23 @@ export function readFreeClaudeConfig(): FreeClaudeConfig | null {
   }
 
   try {
+    const size = statSync(configPath).size
+    if (size > CONFIG_MAX_SIZE_BYTES) {
+      console.error(`[FreeClaude] Config file at ${configPath} is unexpectedly large (${size} bytes) — ignoring`)
+      return null
+    }
     return JSON.parse(readFileSync(configPath, 'utf-8')) as FreeClaudeConfig
-  } catch {
+  } catch (err) {
+    console.error(`[FreeClaude] Failed to read/parse config at ${configPath}:`, err)
     return null
   }
 }
 
 export function writeFreeClaudeConfig(config: FreeClaudeConfig): void {
-  writeFileSync(
-    getFreeClaudeConfigPath(),
-    JSON.stringify(config, null, 2) + '\n',
-    'utf-8',
-  )
+  const configPath = getFreeClaudeConfigPath()
+  const tmpPath = `${configPath}.tmp.${process.pid}`
+  writeFileSync(tmpPath, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+  renameSync(tmpPath, configPath)
 }
 
 export function findKnownProviderDefinition(provider: {

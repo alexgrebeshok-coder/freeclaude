@@ -96,7 +96,7 @@ export const CONFIG_PATH = getFreeClaudeConfigPath()
 // Errors that trigger fallback
 // ---------------------------------------------------------------------------
 
-const FALLBACK_STATUS_CODES = new Set([400, 401, 403, 429, 500, 502, 503, 504])
+const FALLBACK_STATUS_CODES = new Set([401, 403, 429, 500, 502, 503, 504])
 
 // Network error patterns that should trigger fallback
 const NETWORK_ERROR_PATTERNS = [
@@ -301,6 +301,17 @@ export function isProviderRestrictionError(error: Error | undefined): boolean {
   )
 }
 
+export function isModelNotFoundError(error: Error | undefined): boolean {
+  const msg = String(error?.message || '').toLowerCase()
+  return (
+    msg.includes('model not found') ||
+    msg.includes('model_not_found') ||
+    msg.includes('no such model') ||
+    msg.includes('invalid model') ||
+    msg.includes('does not exist')
+  )
+}
+
 export function describeProviderError(
   error: Error | undefined,
   statusCode: number,
@@ -314,6 +325,7 @@ export function describeProviderError(
     return code ? `network error (${code})` : 'network error'
   }
 
+  if (statusCode === 400 && isModelNotFoundError(error)) return 'HTTP 400 model not found'
   if (statusCode === 401) return 'HTTP 401 authentication failed'
   if (statusCode === 429) return 'HTTP 429 rate limited'
   if (statusCode >= 500) return `HTTP ${statusCode} server error`
@@ -343,6 +355,10 @@ export function shouldFallback(
 ): boolean {
   if (FALLBACK_STATUS_CODES.has(statusCode)) return true
   if (error && isNetworkError(error)) return true
+  // 400 "model not found" is semantically a wrong-model error — fall back
+  if (statusCode === 400 && isModelNotFoundError(error)) return true
+  // 403 provider geo/TOS restriction — fall back to another provider
+  if (statusCode === 403 && isProviderRestrictionError(error)) return true
   return false
 }
 
@@ -358,9 +374,18 @@ export function isNetworkError(error: Error): boolean {
 // API key resolution
 // ---------------------------------------------------------------------------
 
+// Allow only conventional env var names: uppercase letters, digits, underscores
+// (at least 1 char, max 64). This prevents reading arbitrary system vars or
+// injecting shell metacharacters via a malformed config file.
+const SAFE_ENV_VAR_RE = /^[A-Z_][A-Z0-9_]{0,63}$/
+
 export function resolveApiKey(value: string): string {
   if (value.startsWith('env:')) {
     const envVar = value.slice(4)
+    if (!SAFE_ENV_VAR_RE.test(envVar)) {
+      console.error(`[FreeClaude] WARNING: env var name "${envVar}" is not valid — must be uppercase letters, digits, and underscores only`)
+      return ''
+    }
     const resolved = process.env[envVar]
     if (!resolved) {
       console.error(`[FreeClaude] WARNING: env var ${envVar} not set for provider`)

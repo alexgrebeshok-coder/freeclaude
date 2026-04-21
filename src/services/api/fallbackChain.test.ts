@@ -8,6 +8,7 @@ import {
   classifyRoutingGoal,
   shouldFallback,
   isNetworkError,
+  isModelNotFoundError,
   isProviderRestrictionError,
   resolveApiKey,
 } from './fallbackChain.ts'
@@ -72,7 +73,10 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('shouldFallback', () => {
-  test('triggers on 400 Bad Request', () => expect(shouldFallback(400)).toBe(true))
+  test('does NOT trigger on generic 400 Bad Request', () => expect(shouldFallback(400)).toBe(false))
+  test('triggers on 400 with "Model not found" body', () => expect(
+    shouldFallback(400, new Error('OpenAI API error 400: {"error":{"message":"Model not found"}}')),
+  ).toBe(true))
   test('triggers on 401 Unauthorized', () => expect(shouldFallback(401)).toBe(true))
   test('triggers on generic 403 Forbidden', () => expect(
     shouldFallback(403, new Error('OpenAI API error 403: forbidden')),
@@ -122,6 +126,19 @@ describe('isProviderRestrictionError', () => {
   test('does not match generic 403 errors', () => expect(
     isProviderRestrictionError(new Error('OpenAI API error 403: forbidden')),
   ).toBe(false))
+})
+
+describe('isModelNotFoundError', () => {
+  test('detects "Model not found" message', () => expect(
+    isModelNotFoundError(new Error('OpenAI API error 400: {"error":{"message":"Model not found"}}')),
+  ).toBe(true))
+  test('detects "model_not_found" key', () => expect(
+    isModelNotFoundError(new Error('OpenAI API error 400: {"error":{"code":"model_not_found"}}')),
+  ).toBe(true))
+  test('does not match generic 400 errors', () => expect(
+    isModelNotFoundError(new Error('OpenAI API error 400: bad request')),
+  ).toBe(false))
+  test('returns false for undefined', () => expect(isModelNotFoundError(undefined)).toBe(false))
 })
 
 // ---------------------------------------------------------------------------
