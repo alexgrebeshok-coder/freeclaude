@@ -7,7 +7,7 @@
  */
 
 import type { LocalCommandCall } from '../../types/command.js'
-import { readAllJobs } from '../../services/jobs/jobStore.js'
+import { pruneOldJobs, readAllJobs } from '../../services/jobs/jobStore.js'
 
 function formatDuration(start: string, end?: string): string {
   const ms = (end ? new Date(end) : new Date()).getTime() - new Date(start).getTime()
@@ -28,6 +28,11 @@ function statusIcon(status: string): string {
 }
 
 export const call: LocalCommandCall = async () => {
+  // Opportunistic housekeeping — keeps the list view responsive on
+  // installs that have accumulated thousands of completed jobs. Any
+  // filesystem failure is swallowed so /jobs never fails because of it.
+  try { pruneOldJobs() } catch { /* non-critical */ }
+
   const jobs = readAllJobs()
 
   if (jobs.length === 0) {

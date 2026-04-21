@@ -40,12 +40,22 @@ export interface TaskHealthCheck {
   cleanedUp: string[]
 }
 
+export interface HousekeepingReport {
+  /** Job records removed by the background jobs prune pass. */
+  prunedJobRecords: number
+  /** Orphaned or pruned job log files. */
+  prunedJobLogs: number
+  /** Expired agent mailbox messages removed. */
+  prunedMailboxMessages: number
+}
+
 export interface HeartbeatStatus {
   timestamp: string
   upSince: string
   providers: ProviderHealthCheck[]
   memory: MemoryHealthCheck
   tasks: TaskHealthCheck
+  housekeeping?: HousekeepingReport
   diskUsageMB: number
   overallHealth: 'healthy' | 'degraded' | 'critical'
 }
@@ -234,13 +244,45 @@ function getDiskUsageMB(): number {
 }
 
 /**
+ * Best-effort housekeeping — prune old background jobs and expired
+ * agent inbox/outbox messages. Never throws; failures are swallowed so
+ * the main heartbeat cycle is never blocked by housekeeping errors.
+ */
+async function runHousekeeping(): Promise<HousekeepingReport> {
+  const report: HousekeepingReport = {
+    prunedJobRecords: 0,
+    prunedJobLogs: 0,
+    prunedMailboxMessages: 0,
+  }
+
+  try {
+    const { pruneOldJobs } = await import('../jobs/jobStore.js')
+    const result = pruneOldJobs()
+    report.prunedJobRecords = result.removedRecords
+    report.prunedJobLogs = result.removedLogs
+  } catch {
+    /* non-critical */
+  }
+
+  try {
+    const { pruneExpiredMailboxes } = await import('../agents/agentProtocol.js')
+    report.prunedMailboxMessages = pruneExpiredMailboxes()
+  } catch {
+    /* non-critical */
+  }
+
+  return report
+}
+
+/**
  * Run a full heartbeat check.
  */
 export async function runHeartbeat(): Promise<HeartbeatStatus> {
-  const [providers, memory, tasks] = await Promise.all([
+  const [providers, memory, tasks, housekeeping] = await Promise.all([
     checkProviders(),
     checkMemory(),
     Promise.resolve(checkTasks()),
+    runHousekeeping(),
   ])
 
   const diskUsageMB = getDiskUsageMB()
@@ -259,6 +301,7 @@ export async function runHeartbeat(): Promise<HeartbeatStatus> {
     providers,
     memory,
     tasks,
+    housekeeping,
     diskUsageMB,
     overallHealth,
   }
@@ -300,6 +343,14 @@ export function startHeartbeat(intervalMs: number = 5 * 60 * 1000): void {
   _intervalId = setInterval(() => {
     runHeartbeat().catch(() => {})
   }, intervalMs)
+
+  // Don't keep the process alive solely because of the heartbeat timer.
+  // Long-running hosts (telegram bot, daemon) will keep the event loop
+  // busy on their own; short CLI invocations that accidentally import
+  // this module shouldn't hang.
+  if (_intervalId && typeof _intervalId.unref === 'function') {
+    _intervalId.unref()
+  }
 }
 
 /**
@@ -368,6 +419,17 @@ export function formatHeartbeat(status: HeartbeatStatus): string {
     lines.push(`     ▶️  Active: ${status.tasks.activeCount}`)
     if (status.tasks.staleCount > 0) {
       lines.push(`     ⚠️  Stale:  ${status.tasks.staleCount} (cleaned up: ${status.tasks.cleanedUp.join(', ')})`)
+    }
+  }
+
+  if (status.housekeeping) {
+    const { prunedJobRecords, prunedJobLogs, prunedMailboxMessages } = status.housekeeping
+    if (prunedJobRecords + prunedJobLogs + prunedMailboxMessages > 0) {
+      lines.push('')
+      lines.push('   Housekeeping:')
+      if (prunedJobRecords > 0) lines.push(`     🧹 Pruned job records:   ${prunedJobRecords}`)
+      if (prunedJobLogs > 0) lines.push(`     🧹 Pruned job logs:      ${prunedJobLogs}`)
+      if (prunedMailboxMessages > 0) lines.push(`     🧹 Pruned mailbox msgs:  ${prunedMailboxMessages}`)
     }
   }
 

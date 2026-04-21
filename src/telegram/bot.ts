@@ -133,6 +133,18 @@ export async function createBot(config?: Partial<BotConfig>): Promise<Bot> {
 
 export async function startBot(config?: Partial<BotConfig>): Promise<void> {
   const bot = await createBot(config)
+
+  // Long-running entrypoint: opt in to periodic heartbeat + housekeeping
+  // so the bot prunes job records, rotates logs, and tracks provider
+  // health on its own. Both helpers unref their timers so they never
+  // keep the event loop alive on their own.
+  try {
+    const { startHeartbeat } = await import('../services/heartbeat/heartbeat.js')
+    startHeartbeat()
+  } catch (err) {
+    console.warn('[bot] heartbeat unavailable:', (err as Error).message)
+  }
+
   console.log('[bot] Starting FreeClaude Telegram bot...')
   await bot.start({
     onStart: info => {
