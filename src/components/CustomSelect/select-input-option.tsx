@@ -1,5 +1,6 @@
 import { c as _c } from "react-compiler-runtime";
 import React, { type ReactNode, useEffect, useRef, useState } from 'react';
+import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- UP arrow exit not in Attachments bindings
 import { Box, Text, useInput } from '../../ink.js';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
@@ -115,6 +116,10 @@ export function SelectInputOption(t0) {
   }
   const imageAttachments = t4;
   const showLabel = showLabelProp || option.showLabelWithValue === true;
+  // Derive text-input wrap budget from the real terminal size instead of a hard-coded 80.
+  // Reserve a few columns for index prefix, bullet, and the select's internal padding.
+  const { columns: _termColumns } = useTerminalSize();
+  const _inputColumns = Math.max(20, _termColumns - Math.max(6, maxIndexWidth + 4));
   const [cursorOffset, setCursorOffset] = useState(inputValue.length);
   const isUserEditing = useRef(false);
   let t5;
@@ -379,7 +384,7 @@ export function SelectInputOption(t0) {
           isUserEditing.current = true;
           onInputChange(value);
           option.onChange(value);
-        }} onSubmit={onSubmit} onExit={onExit} placeholder={option.placeholder} focus={!imagesSelected} showCursor={true} multiline={true} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} columns={80} onImagePaste={onImagePaste} onPaste={pastedText => {
+        }} onSubmit={onSubmit} onExit={onExit} placeholder={option.placeholder} focus={!imagesSelected} showCursor={true} multiline={true} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} columns={_inputColumns} onImagePaste={onImagePaste} onPaste={pastedText => {
           isUserEditing.current = true;
           const before = inputValue.slice(0, cursorOffset);
           const after = inputValue.slice(cursorOffset);
@@ -391,7 +396,7 @@ export function SelectInputOption(t0) {
       isUserEditing.current = true;
       onInputChange(value_0);
       option.onChange(value_0);
-    }} onSubmit={onSubmit} onExit={onExit} placeholder={option.placeholder || (typeof option.label === "string" ? option.label : undefined)} focus={!imagesSelected} showCursor={true} multiline={true} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} columns={80} onImagePaste={onImagePaste} onPaste={pastedText_0 => {
+    }} onSubmit={onSubmit} onExit={onExit} placeholder={option.placeholder || (typeof option.label === "string" ? option.label : undefined)} focus={!imagesSelected} showCursor={true} multiline={true} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} columns={_inputColumns} onImagePaste={onImagePaste} onPaste={pastedText_0 => {
       isUserEditing.current = true;
       const before_0 = inputValue.slice(0, cursorOffset);
       const after_0 = inputValue.slice(cursorOffset);

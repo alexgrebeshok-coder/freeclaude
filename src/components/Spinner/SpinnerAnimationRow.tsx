@@ -100,7 +100,13 @@ export function SpinnerAnimationRow({
   thinkingStatus,
   effortSuffix
 }: SpinnerAnimationRowProps): React.ReactNode {
-  const [viewportRef, time] = useAnimationFrame(reducedMotion ? null : 50);
+  // Reduced motion still needs a slow clock so SpinnerGlyph's 2s flash cycle
+  // (1s visible / 1s dim) can actually tick; passing null froze `time` at 0
+  // and made the dot look static. Sampling at 500ms comfortably resolves
+  // each 1s half-phase while keeping CPU wakeups minimal. All other time-
+  // dependent animations in this component are already guarded with
+  // `reducedMotion ? …`, so they stay frozen.
+  const [viewportRef, time] = useAnimationFrame(reducedMotion ? 500 : 50);
 
   // === Elapsed time (wall-clock, derived from refs each frame) ===
   const now = Date.now();

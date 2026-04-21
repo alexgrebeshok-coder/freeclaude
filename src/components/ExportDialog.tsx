@@ -120,7 +120,8 @@ export function ExportDialog({
           <Text>Enter filename:</Text>
           <Box flexDirection="row" gap={1} marginTop={1}>
             <Text>&gt;</Text>
-            <TextInput value={filename} onChange={setFilename} onSubmit={handleFilenameSubmit} focus={true} showCursor={true} columns={columns} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} />
+            {/* Budget: terminal width minus Pane border (2) + paddingX (4) + "> " prefix (1) + gap (1) */}
+            <TextInput value={filename} onChange={setFilename} onSubmit={handleFilenameSubmit} focus={true} showCursor={true} columns={Math.max(20, columns - 8)} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} />
           </Box>
         </Box>}
     </Dialog>;

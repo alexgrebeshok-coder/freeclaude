@@ -80,14 +80,16 @@ export function CoordinatorTaskPanel(): React.ReactNode {
  * The panel's 1s tick evicts expired tasks from prev.tasks, so this count
  * stays accurate without needing its own tick.
  */
-export function useCoordinatorTaskCount() {
-  const tasks = useAppState(_temp);
-  let t0;
-  t0 = 0;
-  return t0;
+export function useCoordinatorTaskCount(): number {
+  // Selector must return a stable reference for the store equality check;
+  // count the visible tasks here and include MainLine (index 0) only when
+  // the panel actually has agent rows, matching CoordinatorTaskPanel's
+  // render guard (visibleTasks.length === 0 returns null).
+  return useAppState(_selectCoordinatorTaskCount);
 }
-function _temp(s) {
-  return s.tasks;
+function _selectCoordinatorTaskCount(s: AppState): number {
+  const visible = getVisibleAgentTasks(s.tasks).length;
+  return visible > 0 ? visible + 1 : 0;
 }
 function MainLine(t0) {
   const $ = _c(10);
