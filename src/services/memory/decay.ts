@@ -99,14 +99,17 @@ export function gcMemories(threshold: number = GC_THRESHOLD, now?: Date): {
   const removed: string[] = []
   const newEntries: Record<string, MemoryEntry> = {}
 
-  for (const [key, entry] of Object.entries(store.entries)) {
+  for (const [storageKey, entry] of Object.entries(store.entries)) {
     const meta = getDecayMeta(entry)
     const conf = computeConfidence(meta, now)
 
     if (conf < threshold) {
-      removed.push(key)
+      // Report the user-visible key (entry.key) rather than the internal
+      // "global:..."/"project:..." storage key, which is an
+      // implementation detail the caller doesn't know about.
+      removed.push(entry.key ?? storageKey)
     } else {
-      newEntries[key] = entry
+      newEntries[storageKey] = entry
     }
   }
 

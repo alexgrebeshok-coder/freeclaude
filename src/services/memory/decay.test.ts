@@ -78,16 +78,20 @@ describe('Memory Decay', () => {
 
   test('gcMemories removes low-confidence entries', async () => {
     const { gcMemories } = await import('./decay.ts')
-    const { remember } = await import('./memoryStore.ts')
+    const { remember, loadMemory, saveMemory } = await import('./memoryStore.ts')
 
-    // Create entries with different ages via extended fields
-    const fresh = remember('fresh-key', 'fresh value')
-    const stale = remember('stale-key', 'stale value')
+    remember('fresh-key', 'fresh value')
+    remember('stale-key', 'stale value')
 
-    // Manually set stale entry's confidence very low
-    const { loadMemory, saveMemory } = await import('./memoryStore.ts')
+    // Entries are stored under a composite storage key (e.g. "global:stale-key"),
+    // not the raw user key — look up the matching storage key by the entry's
+    // "key" field before mutating decay metadata on disk.
     const store = loadMemory()
-    const staleEntry = store.entries['stale-key'] as any
+    const staleStorageKey = Object.keys(store.entries).find(
+      storageKey => store.entries[storageKey]?.key === 'stale-key',
+    )
+    expect(staleStorageKey).toBeDefined()
+    const staleEntry = store.entries[staleStorageKey!] as any
     staleEntry.confidence = 0.05 // Below GC threshold
     staleEntry.lastAccessedAt = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()
     saveMemory(store)
