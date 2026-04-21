@@ -6,8 +6,10 @@ import {
 import { randomUUID } from 'node:crypto'
 import {
   appendFileSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -281,6 +283,98 @@ function writeJsonAtomic(path: string, value: unknown): void {
   renameSync(tempPath, path)
 }
 
+// ---------------------------------------------------------------------------
+// Cross-process task locking
+//
+// updateTask() does a read-modify-write against tasks/<id>.json. Two
+// concurrent workers could otherwise read the same snapshot, both
+// append divergent changes, and the second rename would silently clobber
+// the first. We gate those updates with a tiny pid-stamped lock file
+// created via O_EXCL; stale locks (owner pid dead, or file older than
+// LOCK_STALE_MS) are reclaimed.
+// ---------------------------------------------------------------------------
+
+const LOCK_STALE_MS = 60_000
+const LOCK_RETRY_DELAY_MS = 25
+const LOCK_MAX_ATTEMPTS = 200 // ~5s total
+const LOCK_DIR_NAME = 'locks'
+
+function locksDir(): string {
+  const dir = join(tasksDir(), LOCK_DIR_NAME)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+function taskLockPath(taskId: string): string {
+  return join(locksDir(), `${taskId}.lock`)
+}
+
+function tryAcquireLock(path: string): number | null {
+  try {
+    const fd = openSync(path, 'wx')
+    writeFileSync(fd, `${process.pid}\n${Date.now()}\n`, 'utf-8')
+    return fd
+  } catch {
+    return null
+  }
+}
+
+function lockOwnerIsStale(path: string): boolean {
+  try {
+    const stat = statSync(path)
+    if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) return true
+    const raw = readFileSync(path, 'utf-8')
+    const pid = Number.parseInt(raw.split('\n')[0] ?? '', 10)
+    if (!pid || pid <= 0) return true
+    try {
+      process.kill(pid, 0)
+      return false
+    } catch {
+      return true
+    }
+  } catch {
+    // If the file vanished between stat and read, treat as stale so the
+    // next tryAcquireLock() attempt can recreate it cleanly.
+    return true
+  }
+}
+
+/**
+ * Run `fn` while holding an exclusive lock on the task record. Blocks
+ * for up to ~5s waiting for contention, reclaims stale locks, and
+ * always releases the lock — even when `fn` throws.
+ */
+export async function withTaskLock<T>(
+  taskId: string,
+  fn: () => T | Promise<T>,
+): Promise<T> {
+  ensureTaskDirectories()
+  const path = taskLockPath(taskId)
+
+  for (let attempt = 0; attempt < LOCK_MAX_ATTEMPTS; attempt++) {
+    const fd = tryAcquireLock(path)
+    if (fd !== null) {
+      try {
+        return await fn()
+      } finally {
+        try { closeSync(fd) } catch { /* ignore */ }
+        try { unlinkSync(path) } catch { /* already removed */ }
+      }
+    }
+
+    if (lockOwnerIsStale(path)) {
+      try { unlinkSync(path) } catch { /* raced with another reclaim */ }
+      continue
+    }
+
+    await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_DELAY_MS))
+  }
+
+  throw new Error(
+    `Timed out waiting for task lock on "${taskId}" after ${LOCK_MAX_ATTEMPTS * LOCK_RETRY_DELAY_MS}ms`,
+  )
+}
+
 function appendJsonLine(path: string, value: unknown): void {
   appendFileSync(path, JSON.stringify(value) + '\n', 'utf-8')
 }
@@ -375,6 +469,19 @@ export function updateTask(
           updatedAt: updater.updatedAt ?? nowIso(),
         }
   return saveTask(next)
+}
+
+/**
+ * Race-safe variant of updateTask. Holds an exclusive lock on the task
+ * record while the updater runs, so concurrent writers always see the
+ * latest state. Prefer this when the caller may run alongside other
+ * processes (e.g. multiple workers on the same task).
+ */
+export async function updateTaskLocked(
+  taskId: string,
+  updater: Partial<TaskRecord> | ((task: TaskRecord) => TaskRecord),
+): Promise<TaskRecord> {
+  return withTaskLock(taskId, () => updateTask(taskId, updater))
 }
 
 export function getTask(taskId: string): TaskRecord | null {

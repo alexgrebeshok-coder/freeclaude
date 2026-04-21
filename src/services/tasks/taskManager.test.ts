@@ -14,6 +14,8 @@ import {
   setTaskPinned,
   type TaskTemplateId,
   updateTask,
+  updateTaskLocked,
+  withTaskLock,
 } from './taskManager.ts'
 import {
   existsSync,
@@ -178,6 +180,47 @@ describe('taskManager', () => {
     expect(existsSync(archivedPath)).toBe(true)
     expect(listVaultTasks()).toHaveLength(0)
     expect(listVaultTasks({ includeArchived: true })).toHaveLength(1)
+  })
+
+  test('withTaskLock serialises concurrent updateTask calls', async () => {
+    const task = createTask('race on description')
+
+    // Kick off 20 concurrent locked updates that each read the current
+    // description and append a tag. Without the lock the final string
+    // would drop writes because of the read-modify-write race.
+    await Promise.all(
+      Array.from({ length: 20 }).map((_, i) =>
+        updateTaskLocked(task.id, current => ({
+          ...current,
+          description: `${current.description ?? ''}|${i}`,
+          updatedAt: new Date().toISOString(),
+        })),
+      ),
+    )
+
+    const final = getTask(task.id)
+    expect(final).toBeDefined()
+    const appended = (final!.description ?? '').split('|').slice(1)
+    expect(appended).toHaveLength(20)
+    const seen = new Set(appended)
+    for (let i = 0; i < 20; i++) {
+      expect(seen.has(String(i))).toBe(true)
+    }
+  })
+
+  test('withTaskLock releases the lock on error', async () => {
+    const task = createTask('lock released on throw')
+
+    await expect(
+      withTaskLock(task.id, () => {
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow(/boom/)
+
+    // A subsequent lock acquisition must not hang — the previous lock
+    // was released by the finally block even though fn threw.
+    const result = await withTaskLock(task.id, () => 'reacquired')
+    expect(result).toBe('reacquired')
   })
 
   test('forgets vault context by deleting the note and clearing task pointers', () => {
