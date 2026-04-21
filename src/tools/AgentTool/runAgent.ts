@@ -80,6 +80,7 @@ import {
 import type { ContentReplacementState } from '../../utils/toolResultStorage.js'
 import { createAgentId } from '../../utils/uuid.js'
 import { resolveAgentTools } from './agentToolUtils.js'
+import { MAX_AGENT_NESTING_DEPTH } from './constants.js'
 import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
 
 /**
