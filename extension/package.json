@@ -2,7 +2,7 @@
   "name": "freeclaude",
   "displayName": "FreeClaude",
   "description": "Light companion extension for FreeClaude Desktop and CLI",
-  "version": "3.2.9",
+  "version": "3.2.13",
   "publisher": "alexgrebeshok",
   "engines": {
     "vscode": "^1.85.0"
