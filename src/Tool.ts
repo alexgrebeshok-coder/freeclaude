@@ -12,12 +12,34 @@ import type { Command } from './commands.js'
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import type { ThinkingConfig } from './utils/thinking.js'
 
-export type ToolInputJSONSchema = {
+/**
+ * JSON Schema for an individual tool input property.
+ * The index signature is required to allow standard JSON Schema keywords
+ * (`$ref`, `allOf`, `oneOf`, etc.) without exhaustively enumerating them.
+ */
+export type ToolPropertySchema = {
+  type?: string | string[]
+  description?: string
+  enum?: unknown[]
+  items?: ToolPropertySchema
+  properties?: Record<string, ToolPropertySchema>
+  required?: string[]
   [x: string]: unknown
+}
+
+/**
+ * JSON Schema for a tool's top-level input object.
+ * The index signature exists because JSON Schema allows arbitrary vendor
+ * extensions and additional keywords (`title`, `$schema`, etc.).  All named
+ * properties must be assignable to `unknown` to satisfy TypeScript's index
+ * signature constraint.
+ */
+export type ToolInputJSONSchema = {
   type: 'object'
-  properties?: {
-    [x: string]: unknown
-  }
+  properties?: Record<string, ToolPropertySchema>
+  required?: string[]
+  description?: string
+  [x: string]: unknown
 }
 
 import type { Notification } from './context/notifications.js'

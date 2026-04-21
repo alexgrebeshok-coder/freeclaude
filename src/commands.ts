@@ -70,8 +70,6 @@ import heartbeat from './commands/heartbeat/index.js'
 import routine from './commands/routine/index.js'
 import telegram from './commands/telegram/index.js'
 import providers from './commands/providers/index.js'
-import modelCmd from './commands/model/index.js'
-import cost from './commands/cost/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
 import { feature } from 'bun:bundle'
@@ -647,8 +645,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   routine, // Routine management
   telegram, // Telegram bot interface
   providers, // Show provider config and test connectivity
-  modelCmd, // Switch active model/provider
-  cost, // Cost tracking summary
+  model, // Switch active model/provider
   copy, // Copy last message
   btw, // Quick note
   feedback, // Send feedback

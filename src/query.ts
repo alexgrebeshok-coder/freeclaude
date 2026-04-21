@@ -161,6 +161,10 @@ function* yieldMissingToolResultBlocks(
  * the rules of thinking are the rules of the universe. If ye does not heed these
  * rules, ye will be punished with an entire day of debugging and hair pulling.
  */
+// Allow up to 3 consecutive max_output_tokens recovery attempts before giving
+// up. Each attempt doubles the requested token budget; 3 retries cover a
+// 8× range (1× → 2× → 4× → 8×) which is sufficient for the vast majority of
+// responses that hit the limit mid-turn.
 const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
 
 /**
