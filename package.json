@@ -1,6 +1,6 @@
 {
   "name": "@freeclaude/cli",
-  "version": "3.2.11",
+  "version": "3.2.12",
   "description": "FreeClaude - Claude Code без авторизации. Работает с ZAI, Qwen, DeepSeek, Ollama и любыми OpenAI-compatible API.",
   "type": "module",
   "bin": {
