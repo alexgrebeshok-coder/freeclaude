@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { useRegisterOverlay } from '../context/overlayContext.js';
 import { getTimestampedHistory, type TimestampedHistoryEntry } from '../history.js';
+import { useModalOrTerminalSize } from '../context/modalContext.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { stringWidth } from '../ink/stringWidth.js';
 import { wrapAnsi } from '../ink/wrapAnsi.js';
@@ -15,7 +16,8 @@ type Props = {
   onSelect: (entry: HistoryEntry) => void;
   onCancel: () => void;
 };
-const PREVIEW_ROWS = 6;
+const PREVIEW_ROWS_DEFAULT = 6;
+const PREVIEW_ROWS_MIN = 2;
 const AGE_WIDTH = 8;
 type Item = {
   entry: TimestampedHistoryEntry;
@@ -30,9 +32,12 @@ export function HistorySearchDialog({
   onCancel
 }: Props): React.ReactNode {
   useRegisterOverlay('history-search');
+  // useModalOrTerminalSize so width/height budgets shrink when mounted inside
+  // the FullscreenLayout modal slot instead of assuming the raw terminal.
   const {
-    columns
-  } = useTerminalSize();
+    columns,
+    rows
+  } = useModalOrTerminalSize(useTerminalSize());
   const [items, setItems] = useState<Item[] | null>(null);
   const [query, setQuery] = useState(initialQuery ?? '');
   useEffect(() => {
@@ -81,6 +86,14 @@ export function HistorySearchDialog({
   const listWidth = previewOnRight ? Math.floor((columns - 6) * 0.5) : columns - 6;
   const rowWidth = Math.max(20, listWidth - AGE_WIDTH - 1);
   const previewWidth = previewOnRight ? Math.max(20, columns - listWidth - 12) : Math.max(20, columns - 10);
+  // Preview sits under the list when stacked (previewOnRight=false). Its
+  // previous fixed height of 8 rows could eat everything on short terminals
+  // after FuzzyPicker's chrome (~10 rows) + the list already consumed most
+  // of the screen. Scale with what's actually left, floor at 2 useful rows
+  // so the box still renders with borders.
+  const previewRows = previewOnRight
+    ? PREVIEW_ROWS_DEFAULT
+    : Math.max(PREVIEW_ROWS_MIN, Math.min(PREVIEW_ROWS_DEFAULT, rows - 18));
   return <FuzzyPicker title="Search prompts" placeholder="Filter history…" initialQuery={initialQuery} items={filtered} getKey={item_0 => String(item_0.entry.timestamp)} onQueryChange={setQuery} onSelect={item_1 => {
     logEvent('tengu_history_picker_select', {
       result_count: filtered.length,
@@ -97,10 +110,10 @@ export function HistorySearchDialog({
     const wrapped = wrapAnsi(item_3.display, previewWidth, {
       hard: true
     }).split('\n').filter(l => l.trim() !== '');
-    const overflow = wrapped.length > PREVIEW_ROWS;
-    const shown = wrapped.slice(0, overflow ? PREVIEW_ROWS - 1 : PREVIEW_ROWS);
+    const overflow = wrapped.length > previewRows;
+    const shown = wrapped.slice(0, overflow ? previewRows - 1 : previewRows);
     const more = wrapped.length - shown.length;
-    return <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} height={PREVIEW_ROWS + 2}>
+    return <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} height={previewRows + 2}>
             {shown.map((row, i) => <Text key={i} dimColor>
                 {row}
               </Text>)}

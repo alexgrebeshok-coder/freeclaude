@@ -1,5 +1,6 @@
 import { join } from 'path';
 import React, { useCallback, useState } from 'react';
+import { useModalOrTerminalSize } from '../context/modalContext.js';
 import type { ExitState } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { setClipboard } from '../ink/termio/osc.js';
@@ -31,9 +32,12 @@ export function ExportDialog({
   const [filename, setFilename] = useState<string>(defaultFilename);
   const [cursorOffset, setCursorOffset] = useState<number>(defaultFilename.length);
   const [showFilenameInput, setShowFilenameInput] = useState(false);
+  // Use modal-adjusted columns so the filename input respects the actual
+  // inner width of the modal slot (FullscreenLayout already reserves chrome)
+  // instead of the raw terminal width when the dialog is rendered as a modal.
   const {
     columns
-  } = useTerminalSize();
+  } = useModalOrTerminalSize(useTerminalSize());
 
   // Handle going back from filename input to option selection
   const handleGoBack = useCallback(() => {

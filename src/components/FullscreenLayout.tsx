@@ -419,11 +419,20 @@ export function FullscreenLayout(t0) {
     }
     let t18;
     if ($[33] !== columns || $[34] !== modal || $[35] !== modalScrollRef || $[36] !== terminalRows) {
+      // On tiny terminals (columns<=4 or rows<=3) the raw subtractions below
+      // can produce 0 or negative numbers which then ripple through child
+      // layout math (TextInput columns, Select visibleOptionCount, …) and
+      // corrupt cursor positioning / cause blank flashes. Floor at 1 so
+      // children always receive a sane budget; content just overflows the
+      // modal area on unusably small terminals instead of breaking.
+      const modalRows = Math.max(1, terminalRows - MODAL_TRANSCRIPT_PEEK - 1);
+      const modalColumns = Math.max(1, columns - 4);
+      const modalMaxHeight = Math.max(1, terminalRows - MODAL_TRANSCRIPT_PEEK);
       t18 = modal != null && <ModalContext value={{
-        rows: terminalRows - MODAL_TRANSCRIPT_PEEK - 1,
-        columns: columns - 4,
+        rows: modalRows,
+        columns: modalColumns,
         scrollRef: modalScrollRef ?? null
-      }}><Box position="absolute" bottom={0} left={0} right={0} maxHeight={terminalRows - MODAL_TRANSCRIPT_PEEK} flexDirection="column" overflow="hidden" opaque={true}><Box flexShrink={0}><Text color="permission">{"\u2594".repeat(columns)}</Text></Box><Box flexDirection="column" paddingX={2} flexShrink={0} overflow="hidden">{modal}</Box></Box></ModalContext>;
+      }}><Box position="absolute" bottom={0} left={0} right={0} maxHeight={modalMaxHeight} flexDirection="column" overflow="hidden" opaque={true}><Box flexShrink={0}><Text color="permission">{"\u2594".repeat(Math.max(0, columns))}</Text></Box><Box flexDirection="column" paddingX={2} flexShrink={0} overflow="hidden">{modal}</Box></Box></ModalContext>;
       $[33] = columns;
       $[34] = modal;
       $[35] = modalScrollRef;

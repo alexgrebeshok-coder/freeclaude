@@ -97,7 +97,15 @@ export function FuzzyPicker<T>({
   // Cap visibleCount so the picker never exceeds the terminal height. When it
   // overflows, each re-render (arrow key, ctrl+p) mis-positions the cursor-up
   // by the overflow amount and a previously-drawn line flashes blank.
-  const visibleCount = Math.max(MIN_VISIBLE, Math.min(requestedVisible, rows - CHROME_ROWS - (matchLabel ? 1 : 0)));
+  //
+  // On very short terminals (rows < CHROME_ROWS) the previous
+  // `Math.max(MIN_VISIBLE, …)` clamp floored the list at 2 rows even when
+  // the available space went negative, reintroducing the exact overflow
+  // this comment warns about. Prefer "at least 1 row" as the absolute floor
+  // and let the list shrink below MIN_VISIBLE when there isn't room — one
+  // row of overflow is recoverable; two is not.
+  const availableRows = rows - CHROME_ROWS - (matchLabel ? 1 : 0);
+  const visibleCount = Math.max(1, Math.min(Math.max(MIN_VISIBLE, requestedVisible), availableRows));
 
   // Full hint row with onTab+onShiftTab is ~100 chars and wraps inconsistently
   // below that. Compact mode drops shift+tab and shortens labels.
