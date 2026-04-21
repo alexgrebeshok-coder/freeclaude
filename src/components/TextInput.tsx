@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle';
 import chalk from 'chalk';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { useVoiceState } from '../context/voice.js';
 import { useClipboardImageHint } from '../hooks/useClipboardImageHint.js';
 import { colorize } from '../ink/colorize.js';
@@ -59,23 +59,22 @@ export default function TextInput(props: Props): React.ReactNode {
   useClipboardImageHint(isTerminalFocused, !!props.onImagePaste);
 
   // Cursor renderer: mini waveform during voice recording,
-  // theme-aware focus cell otherwise. No warmup pulse — the ~120ms
-  // warmup window is too short for a 1s-period pulse to register, and
-  // driving TextInput re-renders at 50ms during warmup (while spaces
-  // are simultaneously arriving every 30-80ms) causes visible stutter.
-  const canShowCursor = isTerminalFocused && !accessibilityEnabled;
+  // theme-aware focus cell otherwise. Ink hides the native terminal cursor
+  // (\e[?25l), so our block cursor is the only caret visible — blinking it
+  // at the app level previously made the caret disappear for half of every
+  // 600ms cycle, which users consistently reported as "I can't see where
+  // the cursor is". Terminal emulators already handle caret blinking when
+  // they're configured for it; we keep our block steady so the caret is
+  // always locatable while typing.
+  const canShowCursor = !accessibilityEnabled;
 
-  // Cursor blink: 600ms on/off cycle when the text cursor is active
-  const shouldBlinkCursor = canShowCursor && !isVoiceRecording && Boolean(props.showCursor && props.focus) && !reducedMotion;
-  const [cursorVisible, setCursorVisible] = useState(true);
-  useEffect(() => {
-    if (!shouldBlinkCursor) {
-      setCursorVisible(true);
-      return;
-    }
-    const id = setInterval(() => setCursorVisible(v => !v), 600);
-    return () => clearInterval(id);
-  }, [shouldBlinkCursor]);
+  // Terminals that advertise no color support (NO_COLOR, FORCE_COLOR=0,
+  // `TERM=dumb`) strip ANSI, so a space with only a background would
+  // render as regular whitespace and the caret would be invisible. Fall
+  // back to a printable block character so the caret position is still
+  // clear, at the cost of an ASCII-looking cursor.
+  const hasColorSupport = chalk.level > 0;
+  const FALLBACK_CURSOR_CHAR = '\u258F'; // ▏ (LEFT ONE EIGHTH BLOCK)
 
   let invert: (text: string) => string;
   if (!canShowCursor) {
@@ -100,10 +99,16 @@ export default function TextInput(props: Props): React.ReactNode {
       b: 128
     } : hueToRgb(hue);
     invert = () => chalk.rgb(r, g, b)(BARS[barIndex]!);
+  } else if (hasColorSupport) {
+    invert = (text: string) => colorize(colorize(text, theme.text, 'foreground'), theme.focusBackground, 'background');
   } else {
-    invert = cursorVisible
-      ? (text: string) => colorize(colorize(text, theme.text, 'foreground'), theme.focusBackground, 'background')
-      : (text: string) => text;
+    // No color support: substitute a printable glyph for empty/whitespace
+    // caret cells, and wrap normal text with SGR 7 (inverse) which even
+    // level-1 terminals honor.
+    invert = (text: string) => {
+      if (!text || text === ' ') return FALLBACK_CURSOR_CHAR;
+      return `\u001b[7m${text}\u001b[27m`;
+    };
   }
   const textInputState = useTextInput({
     value: props.value,
