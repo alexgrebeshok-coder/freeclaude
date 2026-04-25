@@ -2,6 +2,36 @@
 
 All notable changes to FreeClaude are documented in this file.
 
+## [3.3.0] - 2026-04-25
+
+### New: Orchestration modes (Stage 1 + 2 + parts of Stage 3)
+Added wrapper-level orchestration on top of `freeclaude-run.sh`. FC stays a stateless executor; loops live in wrappers.
+
+#### Skills (`openclaw-plugin/skills/freeclaude/`)
+- `RALPH.md` — PLAN→CODE→VERIFY→FIX→REPEAT loop protocol with script scoring + early-stop
+- `QUEST.md` — spec-driven async stages: SPEC→PLAN→CODE→TEST→VALIDATE→REPORT
+- `HATS.md` — Planner/Coder/Tester/Reviewer hat system with hand-off contract
+- `templates/spec-template.md` — copy-paste spec template (goal/constraints/acceptance/edge-cases)
+- `templates/quest-prompt.md` — per-stage prompt template for quest-run.sh
+- `templates/hat-prompts.md` — system-prompt addenda per hat
+- `SKILL.md` — extended with `## Modes` (code/quest/ralph/review/debug/explain/test/refactor) + protocol references
+
+#### Wrappers (`tools/`)
+- `ralph-run.sh` (390 LOC) — Ralph loop: `--max-iterations`, `--score-threshold` (default 80), `--enable-struggle-detection`, `--enable-context-rotation`, `--lessons`, `--budget-usd`. Emits final envelope with bestIter/finalScore/totalCost.
+- `quest-run.sh` (566 LOC) — Quest mode: `--spec PATH`, `--quest-id`, `--resume-quest`. State persisted to `~/.freeclaude/quests/<id>.json`.
+- `plan-act-run.sh` (284 LOC) — two-stage with different models: `--plan-model` + `--act-model`.
+
+#### Scoring + lessons (`scripts/`)
+- `score.sh` — auto-detects project type (node/rust/python/go); scores tests 40 + build 20 + lint 20 + no-regressions 20; emits JSON `{total,breakdown,failedChecks}`. Threshold-based exit code.
+- `lessons.ts` — compounding-knowledge CLI for `~/.freeclaude/lessons.json`. Subcommands: add/list/query/export/prune. Atomic writes, tag scoring, 13 unit tests.
+
+### Wrapper passthrough (already in 3.2.19)
+`--max-turns`, `--effort`, `--max-budget-usd`, `commandsRun` parsing — confirmed wired and shipped.
+
+### Notes
+- All new artifacts shipped via `package.json#files`.
+- Pyrfor↔FC integration layer (separate Pyrfor-side modules) consumes the same wrapper envelope contract — no FC changes required for that side.
+
 ## [3.2.19] - 2026-04-25
 
 ### Wrapper (`tools/freeclaude-run.sh`)

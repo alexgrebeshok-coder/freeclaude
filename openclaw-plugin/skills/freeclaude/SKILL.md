@@ -76,3 +76,25 @@ Operator command equivalents:
 - never point it at `~/.openclaw/` unless the operator explicitly wants that
 - always use the real project directory
 - prefer specific tasks over vague requests
+
+## Modes
+
+- `code`     — single-pass coding (default)
+- `quest`    — spec-driven async execution (see QUEST.md)
+- `ralph`    — verify→fix loop until score ≥ threshold (see RALPH.md)
+- `review`   — read-only audit (Reviewer hat, no file edits)
+- `debug`    — diagnostics + minimal targeted fix
+- `explain`  — explanation only, no edits
+- `test`     — author and/or run tests
+- `refactor` — structure-preserving change, behaviour unchanged
+
+## Loaded protocols
+
+The following skill files extend FreeClaude with structured execution protocols:
+
+- [`RALPH.md`](RALPH.md) — iterative PLAN→CODE→VERIFY→FIX loop with script-based
+  scoring, struggle detection, and context rotation.
+- [`QUEST.md`](QUEST.md) — spec-driven async execution across SPEC→PLAN→CODE→TEST
+  →VALIDATE→REPORT stages with checkpointing and milestone notifications.
+- [`HATS.md`](HATS.md) — multi-perspective hat system (Planner / Coder / Tester /
+  Reviewer) used within Ralph and Quest to enforce role separation.

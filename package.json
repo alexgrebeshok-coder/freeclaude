@@ -1,6 +1,6 @@
 {
   "name": "@freeclaude/cli",
-  "version": "3.2.19",
+  "version": "3.3.0",
   "description": "FreeClaude - Claude Code без авторизации. Работает с ZAI, Qwen, DeepSeek, Ollama и любыми OpenAI-compatible API.",
   "type": "module",
   "bin": {
@@ -13,6 +13,11 @@
     "dist/",
     "openclaw-plugin/",
     "tools/freeclaude-run.sh",
+    "tools/ralph-run.sh",
+    "tools/quest-run.sh",
+    "tools/plan-act-run.sh",
+    "scripts/score.sh",
+    "scripts/lessons.ts",
     "README.md"
   ],
   "exports": {
