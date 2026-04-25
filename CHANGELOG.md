@@ -2,6 +2,19 @@
 
 All notable changes to FreeClaude are documented in this file.
 
+## [3.2.19] - 2026-04-25
+
+### Wrapper (`tools/freeclaude-run.sh`)
+- Sync to current production wrapper (954 → 1114 LOC)
+- `--resume` now accepts optional SESSION_ID; new `--resume-last` flag
+- Worktree snapshot capture before run (Pyrfor integration support)
+- Hardened stream-json parsing for `commandsRun` / `filesTouched`
+- Stable envelope contract for external supervisors (Pyrfor, MCP clients)
+
+### Notes
+- No CLI behavior changes; FC remains a stateless executor
+- Wrapper API frozen for the Pyrfor↔FreeClaude integration layer
+
 ## [3.2.8] - 2025-07
 
 ### Runtime Reliability

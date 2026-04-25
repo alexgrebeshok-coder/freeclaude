@@ -2,7 +2,7 @@
 # FreeClaude wrapper for OpenClaw integration
 # Usage:
 #   freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS]
-#                    [--resume SESSION_ID] [--fork-session]
+#                    [--resume [SESSION_ID]] [--resume-last] [--fork-session]
 #                    [--permission-mode MODE] [--bare|--no-bare] [--no-memory]
 #                    [--output-format text|json|stream-json] "prompt"
 #
@@ -52,6 +52,7 @@ FC_PERSIST_RUN_STATE="${FC_PERSIST_RUN_STATE:-1}"
 MEMORY_BRIDGE_ENABLED=0
 MEMORY_CONTEXT_INJECTED=0
 RESUME_SESSION_ID=""
+RESUME_FROM_LAST=0
 FORK_SESSION=0
 PERMISSION_MODE="${PERMISSION_MODE:-bypassPermissions}"
 USE_BARE="${FC_BARE_MODE:-0}"
@@ -125,25 +126,110 @@ print(json.dumps(payload, ensure_ascii=False), flush=True)
 PY
 }
 
+capture_worktree_snapshot() {
+  local snapshot_file="$1"
+
+  if [[ -z "$snapshot_file" ]]; then
+    return 0
+  fi
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf '{}\n' >"$snapshot_file"
+    return 0
+  fi
+
+  python3 - "$snapshot_file" <<'PY'
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+snapshot_path = Path(sys.argv[1])
+
+def read_git_paths():
+    try:
+        raw = subprocess.check_output(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return []
+
+    return [
+        entry.decode("utf-8", errors="replace")
+        for entry in raw.split(b"\0")
+        if entry
+    ]
+
+snapshot = {}
+for rel_path in sorted(set(read_git_paths())):
+    if rel_path.startswith(("node_modules/", ".git/", "dist/")):
+        continue
+
+    path = Path(rel_path)
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        continue
+    except OSError:
+        continue
+
+    if path.is_dir():
+        continue
+
+    snapshot[rel_path] = {
+        "size": stat.st_size,
+        "mtimeNs": stat.st_mtime_ns,
+    }
+
+snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+PY
+}
+
+build_files_touched_json() {
+  local snapshot_before_file="$1"
+  local snapshot_after_file
+  snapshot_after_file=$(mktemp)
+
+  (
+    trap 'rm -f "$snapshot_after_file"' EXIT
+    capture_worktree_snapshot "$snapshot_after_file"
+    python3 - "$snapshot_before_file" "$snapshot_after_file" <<'PY' 2>/dev/null || echo "[]"
+import json
+import sys
+from pathlib import Path
+
+def load_snapshot(path_str: str) -> dict:
+    path = Path(path_str)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+before = load_snapshot(sys.argv[1])
+after = load_snapshot(sys.argv[2])
+changed = sorted({
+    *[path for path, metadata in after.items() if before.get(path) != metadata],
+    *[path for path in before.keys() if path not in after],
+})
+print(json.dumps(changed, ensure_ascii=False))
+PY
+  )
+}
+
 build_result_envelope() {
   local status="$1"
   local stdout_file="$2"
   local stderr_file="$3"
-  local head_before="$4"
+  local snapshot_before_file="$4"
 
-  # Compute filesTouched via git diff
   local files_touched_json="[]"
-  if [[ -n "$head_before" ]] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    files_touched_json=$(
-      {
-        git diff --name-only "$head_before"..HEAD 2>/dev/null
-        git ls-files --others --exclude-standard 2>/dev/null
-      } | sort -u | python3 -c '
-import json, sys
-files = [l.strip() for l in sys.stdin if l.strip()]
-print(json.dumps(files))
-' 2>/dev/null || echo "[]"
-    )
+  if [[ -n "$snapshot_before_file" ]]; then
+    files_touched_json="$(build_files_touched_json "$snapshot_before_file")"
   fi
 
   WRAPPER_STATUS="$status" \
@@ -444,7 +530,35 @@ record_memory_summary() {
     esac
   fi
 
-  BRIDGE_RECORD_JSON="$envelope_json" "$BRIDGE_SCRIPT" record-json "$USER_PROMPT" "${WORKDIR:-cli}" >/dev/null 2>&1 || true
+  SUMMARY_LINE="$(ENVELOPE_JSON="$envelope_json" USER_PROMPT="$USER_PROMPT" python3 - <<'PY'
+import json
+import os
+import textwrap
+
+data = json.loads(os.environ["ENVELOPE_JSON"])
+summary = (data.get("summary") or "").strip()
+status = (data.get("status") or "").strip()
+task = textwrap.shorten((os.environ.get("USER_PROMPT") or "").strip(), width=140, placeholder="...")
+model = (data.get("actualModel") or data.get("model") or "").strip()
+session_id = (data.get("sessionId") or "").strip()
+duration_ms = data.get("durationMs") or 0
+
+if summary:
+    print(f"Task: {task}")
+    print(f"Status: {status}")
+    print(f"Summary: {textwrap.shorten(summary, width=220, placeholder='...')}")
+    if model:
+        print(f"Model: {model}")
+    if session_id:
+        print(f"Session: {session_id}")
+    if isinstance(duration_ms, (int, float)) and duration_ms > 0:
+        print(f"Duration: {round(duration_ms / 1000, 1)}s")
+PY
+)"
+
+  if [[ -n "${SUMMARY_LINE:-}" ]]; then
+    "$BRIDGE_SCRIPT" record "$SUMMARY_LINE" "${WORKDIR:-cli}" >/dev/null 2>&1 || true
+  fi
 }
 
 persist_runtime_state() {
@@ -459,7 +573,9 @@ persist_runtime_state() {
   USER_PROMPT="$USER_PROMPT" \
   WORKDIR="$WORKDIR" \
   MODEL="$MODEL" \
+  RESUME_SESSION_ID="$RESUME_SESSION_ID" \
   python3 - <<'PY'
+import hashlib
 import json
 import os
 import time
@@ -495,6 +611,8 @@ run_entry = {
     "result": envelope,
 }
 
+session_id = ((envelope.get("sessionId") or os.environ.get("RESUME_SESSION_ID") or "").strip())[:200]
+
 runs_path = state_dir / "runs.json"
 try:
     runs_payload = json.loads(runs_path.read_text(encoding="utf-8")) if runs_path.exists() else {}
@@ -514,6 +632,54 @@ tmp_runs.write_text(
     encoding="utf-8",
 )
 tmp_runs.replace(runs_path)
+
+if session_id and run_entry["workdir"]:
+    key = hashlib.sha256(run_entry["workdir"].encode("utf-8")).hexdigest()[:16]
+    last_session_path = state_dir / f"last-session-{key}.json"
+    last_session_payload = {
+        "version": 1,
+        "updatedAt": now,
+        "workdir": run_entry["workdir"],
+        "sessionId": session_id,
+        "model": run_entry["model"],
+        "status": run_entry["status"],
+        "task": run_entry["task"][:500],
+    }
+    tmp_last_session = last_session_path.with_suffix(".json.tmp")
+    tmp_last_session.write_text(
+        json.dumps(last_session_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    tmp_last_session.replace(last_session_path)
+PY
+}
+
+resolve_last_resume_session_id() {
+  FC_STATE_DIR="$FC_STATE_DIR" \
+  WORKDIR="$WORKDIR" \
+  python3 - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+
+workdir = (os.environ.get("WORKDIR") or "").strip()
+if not workdir:
+    raise SystemExit(0)
+
+state_dir = Path(os.environ["FC_STATE_DIR"]).expanduser()
+key = hashlib.sha256(workdir.encode("utf-8")).hexdigest()[:16]
+last_session_path = state_dir / f"last-session-{key}.json"
+
+try:
+    payload = json.loads(last_session_path.read_text(encoding="utf-8"))
+except Exception:
+    payload = {}
+
+if isinstance(payload, dict):
+    session_id = (payload.get("sessionId") or "").strip()
+    if session_id:
+        print(session_id)
 PY
 }
 
@@ -533,8 +699,17 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --resume)
-      RESUME_SESSION_ID="$2"
-      shift 2
+      if [[ $# -ge 2 && "$2" != --* ]]; then
+        RESUME_SESSION_ID="$2"
+        shift 2
+      else
+        RESUME_FROM_LAST=1
+        shift
+      fi
+      ;;
+    --resume-last)
+      RESUME_FROM_LAST=1
+      shift
       ;;
     --max-turns)
       MAX_TURNS="$2"
@@ -622,7 +797,7 @@ done
 
 if [[ -z "$PROMPT" ]]; then
   echo "Error: No prompt provided"
-  echo "Usage: freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS] [--resume SESSION_ID] [--fork-session] [--max-turns N] [--effort LEVEL] [--max-budget-usd USD] [--fallback-model MODEL] [--allowed-tools TOOLS] [--disallowed-tools TOOLS] [--tools TOOLS] [--system-prompt TEXT] [--append-system-prompt TEXT] [--json-schema JSON] [--add-dir DIR] [--no-persist] [--permission-mode MODE] [--bare|--no-bare] [--no-memory] [--output-format text|json|stream-json] \"prompt\""
+  echo "Usage: freeclaude-run.sh [--model MODEL] [--workdir DIR] [--timeout SECS] [--resume [SESSION_ID]] [--resume-last] [--fork-session] [--max-turns N] [--effort LEVEL] [--max-budget-usd USD] [--fallback-model MODEL] [--allowed-tools TOOLS] [--disallowed-tools TOOLS] [--tools TOOLS] [--system-prompt TEXT] [--append-system-prompt TEXT] [--json-schema JSON] [--add-dir DIR] [--no-persist] [--permission-mode MODE] [--bare|--no-bare] [--no-memory] [--output-format text|json|stream-json] \"prompt\""
   exit 1
 fi
 
@@ -701,6 +876,14 @@ case "$WORKDIR/" in
     ;;
 esac
 
+if [[ "$RESUME_FROM_LAST" == "1" && -z "$RESUME_SESSION_ID" ]]; then
+  RESUME_SESSION_ID="$(resolve_last_resume_session_id)"
+  if [[ -z "$RESUME_SESSION_ID" ]]; then
+    echo "Error: No persisted FreeClaude session found for $WORKDIR"
+    exit 1
+  fi
+fi
+
 COMMON_ARGS=()
 if [[ "$USE_BARE" == "1" ]]; then
   COMMON_ARGS+=("--bare")
@@ -759,11 +942,9 @@ cd "$WORKDIR"
 
 STDOUT_FILE=$(mktemp)
 STDERR_FILE=$(mktemp)
-HEAD_BEFORE=""
-if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  HEAD_BEFORE=$(git rev-parse HEAD 2>/dev/null || true)
-fi
-trap "rm -f '$STDOUT_FILE' '$STDERR_FILE'" EXIT
+SNAPSHOT_BEFORE_FILE=$(mktemp)
+capture_worktree_snapshot "$SNAPSHOT_BEFORE_FILE"
+trap "rm -f '$STDOUT_FILE' '$STDERR_FILE' '$SNAPSHOT_BEFORE_FILE'" EXIT
 
 if [[ -x "$BRIDGE_SCRIPT" && "${FC_MEMORY_BRIDGE:-1}" != "0" ]]; then
   MEMORY_BRIDGE_ENABLED=1
@@ -777,7 +958,7 @@ $USER_PROMPT"
   fi
 fi
 
-# Auto-select OpenRouter when key available and model not overridden
+# Auto-select OpenRouter when key available
 if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
   export FREECLAUDE_PREFER_ENV_OPENROUTER=1
 else
@@ -805,24 +986,17 @@ if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
   STREAM_CMD+=("--" "$PROMPT")
 
   set +e
-  perl -e "
-    alarm $TIMEOUT;
-    \$SIG{ALRM} = sub {
-      if (defined \$pid) {
-        kill 'TERM', \$pid;
-        select undef, undef, undef, 0.25;
-        kill 'KILL', \$pid if kill 0, \$pid;
-      }
-      print STDERR qq(FreeClaude timed out after ${TIMEOUT}s\n);
-      exit 124;
-    };
-    \$pid = fork;
-    if (\$pid == 0) {
-      exec @ARGV;
-    }
-    waitpid(\$pid, 0);
-    exit(\$? >> 8);
-  " "${STREAM_CMD[@]}" 2>"$STDERR_FILE" | tee "$STDOUT_FILE"
+  (
+    "${STREAM_CMD[@]}" 2>"$STDERR_FILE" &
+    FC_PID=$!
+    (sleep "$TIMEOUT" && kill -TERM "$FC_PID" 2>/dev/null && sleep 1 && kill -KILL "$FC_PID" 2>/dev/null && echo "FreeClaude timed out after ${TIMEOUT}s" >&2) &
+    TIMER_PID=$!
+    wait "$FC_PID" 2>/dev/null
+    FC_EXIT=$?
+    kill "$TIMER_PID" 2>/dev/null
+    wait "$TIMER_PID" 2>/dev/null
+    exit "$FC_EXIT"
+  ) | tee "$STDOUT_FILE"
   EXIT_CODE=${PIPESTATUS[0]}
   set -e
 
@@ -834,7 +1008,7 @@ if [[ "$OUTPUT_FORMAT" == "stream-json" ]]; then
     STATUS="error"
   fi
 
-  ENVELOPE_JSON="$(build_result_envelope "$STATUS" "$STDOUT_FILE" "$STDERR_FILE" "$HEAD_BEFORE")"
+  ENVELOPE_JSON="$(build_result_envelope "$STATUS" "$STDOUT_FILE" "$STDERR_FILE" "$SNAPSHOT_BEFORE_FILE")"
   persist_runtime_state "$ENVELOPE_JSON"
   printf '%s\n' "$ENVELOPE_JSON" || true
 
@@ -859,24 +1033,17 @@ if [[ "$OUTPUT_FORMAT" == "json" ]]; then
   )
 
   set +e
-  perl -e "
-    alarm $TIMEOUT;
-    \$SIG{ALRM} = sub {
-      if (defined \$pid) {
-        kill 'TERM', \$pid;
-        select undef, undef, undef, 0.25;
-        kill 'KILL', \$pid if kill 0, \$pid;
-      }
-      print STDERR qq(FreeClaude timed out after ${TIMEOUT}s\n);
-      exit 124;
-    };
-    \$pid = fork;
-    if (\$pid == 0) {
-      exec @ARGV;
-    }
-    waitpid(\$pid, 0);
-    exit(\$? >> 8);
-  " "${JSON_CMD[@]}" >"$STDOUT_FILE" 2>"$STDERR_FILE"
+  (
+    "${JSON_CMD[@]}" >"$STDOUT_FILE" 2>"$STDERR_FILE" &
+    FC_PID=$!
+    (sleep "$TIMEOUT" && kill -TERM "$FC_PID" 2>/dev/null && sleep 1 && kill -KILL "$FC_PID" 2>/dev/null && echo "FreeClaude timed out after ${TIMEOUT}s" >&2) &
+    TIMER_PID=$!
+    wait "$FC_PID" 2>/dev/null
+    FC_EXIT=$?
+    kill "$TIMER_PID" 2>/dev/null
+    wait "$TIMER_PID" 2>/dev/null
+    exit "$FC_EXIT"
+  )
   EXIT_CODE=$?
   set -e
 
@@ -888,7 +1055,7 @@ if [[ "$OUTPUT_FORMAT" == "json" ]]; then
     STATUS="error"
   fi
 
-  ENVELOPE_JSON="$(build_result_envelope "$STATUS" "$STDOUT_FILE" "$STDERR_FILE" "$HEAD_BEFORE")"
+  ENVELOPE_JSON="$(build_result_envelope "$STATUS" "$STDOUT_FILE" "$STDERR_FILE" "$SNAPSHOT_BEFORE_FILE")"
   persist_runtime_state "$ENVELOPE_JSON"
   printf '%s\n' "$ENVELOPE_JSON" || true
 
@@ -900,24 +1067,17 @@ if [[ "$OUTPUT_FORMAT" == "json" ]]; then
 fi
 
 set +e
-perl -e "
-  alarm $TIMEOUT;
-  \$SIG{ALRM} = sub {
-    if (defined \$pid) {
-      kill 'TERM', \$pid;
-      select undef, undef, undef, 0.25;
-      kill 'KILL', \$pid if kill 0, \$pid;
-    }
-    print STDERR qq(FreeClaude timed out after ${TIMEOUT}s\n);
-    exit 124;
-  };
-  \$pid = fork;
-  if (\$pid == 0) {
-    exec @ARGV;
-  }
-  waitpid(\$pid, 0);
-  exit(\$? >> 8);
-" "${CMD_BASE[@]}" >"$STDOUT_FILE" 2>"$STDERR_FILE"
+(
+  "${CMD_BASE[@]}" >"$STDOUT_FILE" 2>"$STDERR_FILE" &
+  FC_PID=$!
+  (sleep "$TIMEOUT" && kill -TERM "$FC_PID" 2>/dev/null && sleep 1 && kill -KILL "$FC_PID" 2>/dev/null && echo "FreeClaude timed out after ${TIMEOUT}s" >&2) &
+  TIMER_PID=$!
+  wait "$FC_PID" 2>/dev/null
+  FC_EXIT=$?
+  kill "$TIMER_PID" 2>/dev/null
+  wait "$TIMER_PID" 2>/dev/null
+  exit "$FC_EXIT"
+)
 EXIT_CODE=$?
 set -e
 
@@ -936,11 +1096,11 @@ if [[ $EXIT_CODE -eq 0 ]]; then
     echo "⚡ FreeClaude | $((DURATION_MS / 1000))s | $COST_LINE"
   fi
 
-  TEXT_ENVELOPE="$(build_result_envelope "success" "$STDOUT_FILE" "$STDERR_FILE" "$HEAD_BEFORE")"
+  TEXT_ENVELOPE="$(build_result_envelope "success" "$STDOUT_FILE" "$STDERR_FILE" "$SNAPSHOT_BEFORE_FILE")"
   persist_runtime_state "$TEXT_ENVELOPE"
   record_memory_summary "$TEXT_ENVELOPE"
 else
-  TEXT_ENVELOPE="$(build_result_envelope "error" "$STDOUT_FILE" "$STDERR_FILE" "$HEAD_BEFORE")"
+  TEXT_ENVELOPE="$(build_result_envelope "error" "$STDOUT_FILE" "$STDERR_FILE" "$SNAPSHOT_BEFORE_FILE")"
   persist_runtime_state "$TEXT_ENVELOPE"
   echo "❌ FreeClaude error (exit code $EXIT_CODE):"
   if [[ -n "$STDERR_CONTENT" ]]; then
