@@ -6,7 +6,7 @@
 
 Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible provider.
 
-[![v3.3.0](https://img.shields.io/badge/version-3.3.0-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
+[![v3.4.0](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
 [![CI](https://github.com/alexgrebeshok-coder/freeclaude/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/alexgrebeshok-coder/freeclaude/actions/workflows/pr-checks.yml)
 [![Desktop](https://img.shields.io/badge/Desktop-Concept-lightgrey)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
 [![VS Code](https://img.shields.io/badge/VS%20Code-Concept-lightgrey)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/extension)
@@ -42,6 +42,9 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 
 ### Что нового в v3
 
+- 🌳 **Session Tree (v3.4.0)** — ветвление сессий: `tools/fc-fork.sh` + `scripts/session-tree.ts` (list/info/fork/prune/gc/annotate)
+- 📚 **Spec-driven Docs (v3.4.0)** — `scripts/extract-doc.ts` + `tools/quest-with-docs.sh`: TSDoc/JSDoc контекст в Quest mode
+- 🛡️ **Fallback Hardening (v3.4.0)** — AbortError больше не вызывает fallback; +EAI_AGAIN/408/425; `parseRetryAfterMs`/`isStreamCutError`/`shouldCircuitOpen`
 - 🔁 **Ralph Loop / Quest / Plan-Act (v3.3.0)** — wrapper-уровень оркестрации: `tools/ralph-run.sh`, `tools/quest-run.sh`, `tools/plan-act-run.sh` + script scoring (40/20/20/20) + compounding lessons
 - 🔄 **Multi-Provider Fallback** — автоматическое переключение между ZAI, Ollama, Gemini и другими
 - 🎙️ **Voice Mode (Beta)** — Whisper STT через SoX, локально и бесплатно

@@ -98,3 +98,5 @@ The following skill files extend FreeClaude with structured execution protocols:
   →VALIDATE→REPORT stages with checkpointing and milestone notifications.
 - [`HATS.md`](HATS.md) — multi-perspective hat system (Planner / Coder / Tester /
   Reviewer) used within Ralph and Quest to enforce role separation.
+- [`SESSION_TREE.md`](SESSION_TREE.md) — branch/fork sessions to explore
+  alternative paths without losing the original checkpoint.

@@ -116,3 +116,49 @@ Followed by the markdown REPORT section containing:
 - **Do not** silently skip acceptance criteria that are hard to verify.
 - **Do not** delete or weaken tests to reach `status=ok`.
 - **Do not** assume missing spec sections — always ask.
+
+---
+
+## Doc context
+
+Quest mode CAN be primed with extracted TSDoc/JSDoc before invocation so the
+agent receives accurate signatures and author intent without paying tokens to
+re-read every source file.
+
+### Recommended workflow
+
+```sh
+# 1. Extract doc comments from your source tree into Markdown:
+bun run scripts/extract-doc.ts \
+  --workdir . --include "src/**" --format md \
+  > /tmp/doc-context.md
+
+# 2. Prepend the doc context to your spec, then invoke Quest:
+tools/quest-with-docs.sh --spec docs/my-spec.md --workdir .
+```
+
+Or use the convenience wrapper directly (it handles step 1 & 2 automatically):
+
+```sh
+tools/quest-with-docs.sh \
+  --spec docs/my-spec.md \
+  --workdir . \
+  --include "src/**" \
+  --symbols "MyClass,MyClass.myMethod"
+```
+
+### Why this helps
+
+- **Accurate signatures**: the agent sees the real parameter types and return
+  types instead of guessing from usage.
+- **Author intent**: `@param` / `@returns` / `@throws` tags encode behaviour
+  that is not always obvious from the implementation.
+- **Token efficiency**: a compact Markdown summary is much smaller than
+  re-reading every file from disk inside the conversation context.
+
+### Extractor limitations
+
+- When the TypeScript compiler API is unavailable, a regex fallback is used;
+  signatures and tags may be approximate.
+- Glob patterns do **not** support brace expansions (`{a,b}`).
+- Only `*.ts`, `*.tsx`, `*.js`, `*.mjs` files are scanned.

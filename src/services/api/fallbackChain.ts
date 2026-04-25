@@ -96,18 +96,22 @@ export const CONFIG_PATH = getFreeClaudeConfigPath()
 // Errors that trigger fallback
 // ---------------------------------------------------------------------------
 
-const FALLBACK_STATUS_CODES = new Set([401, 403, 429, 500, 502, 503, 504])
+// 408 = Request Timeout, 425 = Too Early — both are transient and retry-then-fallback eligible
+const FALLBACK_STATUS_CODES = new Set([401, 403, 408, 425, 429, 500, 502, 503, 504])
 
-// Network error patterns that should trigger fallback
+// Network error patterns that should trigger fallback.
+// NOTE: 'abort error' is intentionally excluded — AbortError signals user-initiated
+// cancellation (Ctrl-C / AbortController.abort()) and must NOT trigger fallback.
+// Use isAbortError() to test for that case explicitly.
 const NETWORK_ERROR_PATTERNS = [
   'ECONNREFUSED',
   'ECONNRESET',
   'ETIMEDOUT',
   'ENOTFOUND',
+  'EAI_AGAIN',    // DNS temporary failure — transient, safe to retry
   'socket hang up',
   'fetch failed',
   'network error',
-  'abort error',
 ]
 
 const CODING_TASK_HINTS = [
@@ -353,12 +357,96 @@ export function shouldFallback(
   statusCode: number,
   error?: Error,
 ): boolean {
+  // User-initiated cancellation — never retry or fall back.
+  if (error && isAbortError(error)) return false
   if (FALLBACK_STATUS_CODES.has(statusCode)) return true
   if (error && isNetworkError(error)) return true
   // 400 "model not found" is semantically a wrong-model error — fall back
   if (statusCode === 400 && isModelNotFoundError(error)) return true
   // 403 provider geo/TOS restriction — fall back to another provider
   if (statusCode === 403 && isProviderRestrictionError(error)) return true
+  return false
+}
+
+/**
+ * Check if an error is a user-initiated abort (AbortController.abort() / Ctrl-C).
+ * These must NOT trigger retries or fallbacks — the user intentionally cancelled.
+ */
+export function isAbortError(error: Error): boolean {
+  return (
+    error.name === 'AbortError' ||
+    (typeof DOMException !== 'undefined' &&
+      error instanceof DOMException &&
+      error.name === 'AbortError')
+  )
+}
+
+/**
+ * Parse the `Retry-After` response header into milliseconds.
+ * Accepts both numeric-seconds and HTTP-date formats (RFC 9110 §10.2.3).
+ * Returns undefined if the header is absent or unparseable.
+ * The returned value is capped at `maxWaitMs` (default 60 s) to prevent
+ * a misbehaving provider from stalling the chain indefinitely.
+ */
+export function parseRetryAfterMs(
+  headers: { get?: (name: string) => string | null } | Record<string, string>,
+  maxWaitMs = 60_000,
+): number | undefined {
+  const raw =
+    typeof (headers as { get?: unknown }).get === 'function'
+      ? (headers as { get: (n: string) => string | null }).get('retry-after')
+      : (headers as Record<string, string>)['retry-after'] ??
+        (headers as Record<string, string>)['Retry-After']
+
+  if (!raw) return undefined
+
+  // Numeric seconds (most common)
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, maxWaitMs)
+  }
+
+  // HTTP-date format
+  const dateMs = Date.parse(raw)
+  if (!Number.isNaN(dateMs)) {
+    const waitMs = dateMs - Date.now()
+    return waitMs > 0 ? Math.min(waitMs, maxWaitMs) : 0
+  }
+
+  return undefined
+}
+
+/**
+ * Detect a stream-cut error (partial / truncated SSE or JSON body).
+ * These are transient — retry once, then fall back.
+ */
+export function isStreamCutError(error: Error): boolean {
+  const msg = error.message.toLowerCase()
+  return (
+    msg.includes('unexpected end of json') ||
+    msg.includes('unterminated string') ||
+    msg.includes('unexpected end of stream') ||
+    msg.includes('premature close') ||
+    msg.includes('stream was aborted') ||
+    msg.includes('incomplete chunked encoding') ||
+    (msg.includes('json') && msg.includes('parse error'))
+  )
+}
+
+/**
+ * Returns true when the error warrants immediately opening the circuit for
+ * this provider — i.e. the failure is permanent until operator action
+ * (bad/revoked key, not a transient 403 geo/TOS restriction).
+ *
+ * Callers should invoke `chain.markDown()` three times in succession (or
+ * once after verifying the key is indeed invalid) to trigger the 5-minute
+ * circuit-open cooldown.
+ */
+export function shouldCircuitOpen(statusCode: number, error?: Error): boolean {
+  // Hard authentication failure — key is wrong/revoked/expired.
+  if (statusCode === 401) return true
+  // 403 that is NOT a transient geo/TOS restriction is a permanent auth refusal.
+  if (statusCode === 403 && !isProviderRestrictionError(error)) return true
   return false
 }
 

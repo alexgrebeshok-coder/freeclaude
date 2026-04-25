@@ -2,6 +2,33 @@
 
 All notable changes to FreeClaude are documented in this file.
 
+## [3.4.0] - 2026-04-25
+
+### Stage 3 — Session tree, fallback hardening, spec-driven docs
+
+#### Session tree (`scripts/session-tree.ts`, `tools/fc-fork.sh`, `SESSION_TREE.md`)
+- Branching/forking sessions: index `~/.freeclaude/sessions/index.json` tracks parentBranchId + fromTurn
+- CLI subcommands: `list-sessions` / `info` / `fork` / `prune` / `gc` / `annotate` / `export`
+- `tools/fc-fork.sh` — convenience wrapper around `freeclaude-run.sh --fork-session`
+- 15 unit tests (atomic write, prune-keep-newest, gc-orphans, etc.) — all green
+
+#### Multi-provider fallback audit (`src/services/api/fallbackChain.ts` + `fallbackAudit.test.ts`)
+- Fixed misclassification: AbortError no longer triggers fallback (user-cancel path)
+- Added EAI_AGAIN, HTTP 408, HTTP 425 to retryable set
+- New helpers: `parseRetryAfterMs()` (numeric + HTTP-date, capped), `isStreamCutError()`, `shouldCircuitOpen()`
+- 36 new integration tests — total 102 pass (was 66)
+- `PROVIDER_SETUP.md` — new `## Fallback semantics` section (decision tree, circuit-breaker, troubleshooting)
+
+#### Spec-driven docs (`scripts/extract-doc.ts`, `tools/quest-with-docs.sh`)
+- TS compiler API extractor with regex fallback; emits markdown context for Quest specs
+- Filters: include/exclude globs, symbol filter (Name or `Class.method`), max-files truncation
+- `tools/quest-with-docs.sh` — prepends extracted doc context to spec, then runs `quest-run.sh`
+- `QUEST.md` — appended `## Doc context` section
+- 13 unit tests — all green
+
+#### Released artifacts (`package.json#files`)
+- `tools/fc-fork.sh`, `tools/quest-with-docs.sh`, `scripts/session-tree.ts`, `scripts/extract-doc.ts`
+
 ## [3.3.0] - 2026-04-25
 
 ### New: Orchestration modes (Stage 1 + 2 + parts of Stage 3)
