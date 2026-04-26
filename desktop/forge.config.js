@@ -1,8 +1,10 @@
+const path = require('path');
+
 module.exports = {
   packagerConfig: {
     name: 'FreeClaude',
     executableName: 'FreeClaude',
-    icon: 'assets/icon.icns',
+    icon: path.join(__dirname, 'assets/icon.icns'),
     appBundleId: 'com.freeclaude.desktop',
     asar: true
   },
@@ -11,7 +13,7 @@ module.exports = {
       name: '@electron-forge/maker-dmg',
       config: {
         name: 'FreeClaude',
-        icon: 'assets/icon.icns'
+        icon: path.join(__dirname, 'assets/icon.icns')
       }
     },
     {
@@ -24,18 +26,18 @@ module.exports = {
       config: {
         build: [
           {
-            entry: 'src/main/bootstrap.ts',
-            config: 'vite.main.config.ts'
+            entry: path.join(__dirname, 'src/main/bootstrap.ts'),
+            config: path.join(__dirname, 'vite.main.config.ts')
           },
           {
-            entry: 'src/preload/preload.ts',
-            config: 'vite.preload.config.ts'
+            entry: path.join(__dirname, 'src/preload/preload.ts'),
+            config: path.join(__dirname, 'vite.preload.config.ts')
           }
         ],
         renderer: [
           {
             name: 'main_window',
-            config: 'vite.renderer.config.ts'
+            config: path.join(__dirname, 'vite.renderer.config.ts')
           }
         ]
       }
