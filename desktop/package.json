@@ -43,7 +43,8 @@
         "name": "FreeClaude",
         "executableName": "FreeClaude",
         "icon": "assets/icon.icns",
-        "appBundleId": "com.freeclaude.desktop"
+        "appBundleId": "com.freeclaude.desktop",
+        "asar": true
       },
       "makers": [
         {
