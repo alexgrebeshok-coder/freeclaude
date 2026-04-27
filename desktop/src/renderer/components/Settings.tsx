@@ -1,15 +1,6 @@
 import React, { useState, useEffect } from 'react';
-
-type Provider = 'glm' | 'gemini' | 'qwen' | 'ollama' | 'deepseek';
-
-interface SettingsState {
-  provider: Provider;
-  apiKey: string;
-  model: string;
-  theme: 'light' | 'dark' | 'auto';
-  fontSize: number;
-  enableTelemetry: boolean;
-}
+import { useAppVersion } from '../hooks/useAppVersion';
+import { AppConfig, Provider } from '../types';
 
 const PROVIDERS: { id: Provider; name: string; models: string[] }[] = [
   {
@@ -39,46 +30,41 @@ const PROVIDERS: { id: Provider; name: string; models: string[] }[] = [
   }
 ];
 
-export function Settings(): React.ReactElement {
+interface SettingsProps {
+  config: AppConfig;
+  onSave: (config: AppConfig) => Promise<void>;
+}
+
+interface SettingsState extends AppConfig {
+  enableTelemetry: boolean;
+}
+
+export function Settings({ config, onSave }: SettingsProps): React.ReactElement {
+  const version = useAppVersion();
   const [settings, setSettings] = useState<SettingsState>({
-    provider: 'glm',
-    apiKey: '',
-    model: 'glm-5.1',
-    theme: 'dark',
-    fontSize: 14,
+    ...config,
     enableTelemetry: false
   });
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // Load settings
-    const loadSettings = async () => {
-      const provider = await window.electron.config.get('provider') as Provider;
-      const apiKey = await window.electron.config.get('apiKey') as string;
-      const model = await window.electron.config.get('model') as string;
-      const theme = await window.electron.config.get('theme') as 'light' | 'dark' | 'auto';
-      const fontSize = await window.electron.config.get('fontSize') as number;
-
-      setSettings(prev => ({
-        ...prev,
-        provider: provider || 'glm',
-        apiKey: apiKey || '',
-        model: model || 'glm-5.1',
-        theme: theme || 'dark',
-        fontSize: fontSize || 14
-      }));
-    };
-
-    loadSettings();
-  }, []);
+    setSettings((prev) => ({
+      ...prev,
+      ...config
+    }));
+  }, [config]);
 
   const handleSave = async () => {
-    await window.electron.config.set('provider', settings.provider);
-    await window.electron.config.set('apiKey', settings.apiKey);
-    await window.electron.config.set('model', settings.model);
-    await window.electron.config.set('theme', settings.theme);
-    await window.electron.config.set('fontSize', settings.fontSize);
-
+    setSaving(true);
+    await onSave({
+      provider: settings.provider,
+      apiKey: settings.apiKey,
+      model: settings.model,
+      theme: settings.theme,
+      fontSize: settings.fontSize
+    });
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -88,8 +74,8 @@ export function Settings(): React.ReactElement {
   return (
     <div className="settings-container">
       <div className="settings-header">
-        <h1>Settings</h1>
-        <p>Configure FreeClaude Desktop preferences</p>
+        <h1>Настройки</h1>
+        <p>Все параметры применяются к desktop shell и к backend bridge без потери рабочего контекста.</p>
       </div>
 
       <div className="settings-content">
@@ -140,7 +126,7 @@ export function Settings(): React.ReactElement {
               placeholder="Enter your API key"
             />
             <p className="setting-hint">
-              Your API key is stored locally and never shared.
+              Ключ хранится локально и используется текущим bridge-конфигом.
             </p>
           </div>
         </section>
@@ -155,8 +141,8 @@ export function Settings(): React.ReactElement {
               value={settings.theme}
               onChange={(e) => setSettings(prev => ({ ...prev, theme: e.target.value as 'light' | 'dark' | 'auto' }))}
             >
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
+              <option value="light">Milk light</option>
+              <option value="dark">Dark contrast</option>
               <option value="auto">Auto (System)</option>
             </select>
           </div>
@@ -178,8 +164,8 @@ export function Settings(): React.ReactElement {
           <h2>About</h2>
           <div className="about-info">
             <p><strong>FreeClaude Desktop</strong></p>
-            <p>Version {window.electron?.app?.getVersion?.() || '0.1.0'}</p>
-            <p>A free, open-source AI coding assistant.</p>
+            <p>Version {version}</p>
+            <p>Desktop AI workspace with Codex-inspired structure and FreeClaude styling.</p>
             <div className="about-links">
               <button onClick={() => window.electron.shell.openExternal('https://github.com/freeclaude')}>
                 GitHub
@@ -193,8 +179,8 @@ export function Settings(): React.ReactElement {
       </div>
 
       <div className="settings-footer">
-        <button className="save-button" onClick={handleSave}>
-          {saved ? 'Saved!' : 'Save Changes'}
+        <button className="save-button" onClick={handleSave} disabled={saving}>
+          {saving ? 'Сохраняем…' : saved ? 'Сохранено' : 'Сохранить изменения'}
         </button>
       </div>
     </div>

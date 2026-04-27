@@ -294,3 +294,33 @@ MIT — use freely, contribute welcome.
 **Made with 🐾 by FreeClaude contributors**
 
 </div>
+
+---
+
+## Canonical Role
+
+**FreeClaude is the autonomous execution kernel and CLI.**
+
+It owns provider routing, multi-provider fallback chains, budget policies, the autonomous task runner, the task/event ledger format (`~/.freeclaude/tasks/*.jsonl`), and the specialist subagent manager. The CLI is the primary surface; desktop and VSCode extension are concept stubs.
+
+| Surface | Description |
+|---------|-------------|
+| CLI Core | Primary runtime surface, 18+ providers, slash commands |
+| Multi-provider Fallback | Priority chains, circuit breaking, `AbortError` hardening |
+| Budget / Cost Tracking | Per-provider cost tracking, `/cost` command |
+| Autonomous Task Runner | `freeclaude task run/list/cancel --json`, schedule support |
+| Task / Event Ledger | Flat-file JSON + JSONL at `~/.freeclaude/tasks/` and `artifacts/` |
+| Memory (FS) | GBrain semantic memory, vault at `~/.freeclaude/vault/` |
+| OpenClaw Plugin | `openclaw-plugin/` — workspace governance integration |
+| MCP Servers | CEOClaw PM (6 tools) + 1С OData (5 tools) at `mcp-servers/` |
+| Hook System | 5 pre-configured safety hooks |
+| Voice (Beta) | Whisper STT via SoX |
+| VSCode Extension | `extension/src/extension.ts` — subprocess stub, not published |
+
+### Relationship to other repos
+
+| Repo | Role | Integration point |
+|------|------|-------------------|
+| **Pyrfor** | Local AI coding control plane; desktop IDE, daemon, MCP gateway | FreeClaude Engine runs as a local service consumed by Pyrfor's FC adapter layer (`pyrfor-fc-adapter.ts`) |
+| **CEOClaw** | Vertical PM/Ops control plane (construction/operations) | FreeClaude CLI exposes CEOClaw PM tools via built-in MCP server; `mcp-servers/ceoclaw-pm/` |
+| **OpenClaw** | Workspace governance, PM/QA discipline (not a runtime product) | Loaded as a plugin (`openclaw-plugin/`); provides memory rules and PM conventions |

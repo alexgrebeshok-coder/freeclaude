@@ -3,12 +3,18 @@ import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 
-export function Terminal(): React.ReactElement {
+interface TerminalProps {
+  isVisible: boolean;
+}
+
+export function Terminal({ isVisible }: TerminalProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const [terminalId, setTerminalId] = useState<string | null>(null);
+  const terminalIdRef = useRef<string | null>(null);
+  const createSessionRef = useRef<(() => Promise<void>) | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [hasExited, setHasExited] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current || terminalRef.current) return;
@@ -19,26 +25,26 @@ export function Terminal(): React.ReactElement {
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: {
-        background: '#0f0f0f',
-        foreground: '#e4e4e4',
-        cursor: '#e4e4e4',
-        selectionBackground: '#6366f1',
-        black: '#000000',
-        red: '#ff5555',
-        green: '#50fa7b',
-        yellow: '#f1fa8c',
-        blue: '#6366f1',
-        magenta: '#ff79c6',
-        cyan: '#8be9fd',
-        white: '#bfbfbf',
-        brightBlack: '#4d4d4d',
-        brightRed: '#ff6e67',
-        brightGreen: '#5af78e',
-        brightYellow: '#f4f99d',
-        brightBlue: '#caa9fa',
-        brightMagenta: '#ff92d0',
-        brightCyan: '#9aedfe',
-        brightWhite: '#e6e6e6'
+        background: '#1d1a16',
+        foreground: '#f3efe8',
+        cursor: '#f3efe8',
+        selectionBackground: '#c46f4a66',
+        black: '#40362f',
+        red: '#d86b5e',
+        green: '#7aa67d',
+        yellow: '#d5aa5b',
+        blue: '#6c8fc3',
+        magenta: '#b987c9',
+        cyan: '#62a9b3',
+        white: '#e6ddd1',
+        brightBlack: '#6f655c',
+        brightRed: '#e38478',
+        brightGreen: '#94ba96',
+        brightYellow: '#dfb96e',
+        brightBlue: '#7fa0d1',
+        brightMagenta: '#c79fd2',
+        brightCyan: '#7ebac2',
+        brightWhite: '#fffdf9'
       }
     });
 
@@ -51,64 +57,115 @@ export function Terminal(): React.ReactElement {
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
 
-    // Create terminal in main process
-    const cols = terminal.cols;
-    const rows = terminal.rows;
+    const createSession = async () => {
+      if (terminalIdRef.current) {
+        return;
+      }
 
-    window.electron.terminal.create({ cols, rows }).then(id => {
-      setTerminalId(id as string);
+      terminal.clear();
+      terminal.write('\x1bc');
+      const id = await window.electron.terminal.create({ cols: terminal.cols, rows: terminal.rows });
+      terminalIdRef.current = id as string;
+      setHasExited(false);
       setIsReady(true);
-    });
+    };
 
-    // Handle input
-    terminal.onData(data => {
+    createSessionRef.current = createSession;
+
+    const terminalDataSubscription = terminal.onData((data) => {
+      const terminalId = terminalIdRef.current;
       if (terminalId) {
         window.electron.terminal.write(terminalId, data);
       }
     });
 
-    // Handle resize
-    terminal.onResize(({ cols, rows }) => {
+    const terminalResizeSubscription = terminal.onResize(({ cols, rows }) => {
+      const terminalId = terminalIdRef.current;
       if (terminalId) {
         window.electron.terminal.resize(terminalId, cols, rows);
       }
     });
 
-    // Listen for data from main process
-    const unsubscribe = window.electron.terminal.onData((id: string, data: string) => {
-      if (id === terminalId) {
+    const unsubscribeData = window.electron.terminal.onData((id: string, data: string) => {
+      if (id === terminalIdRef.current) {
         terminal.write(data);
       }
     });
 
-    // Handle window resize
+    const unsubscribeExit = window.electron.terminal.onExit((id: string, code: number) => {
+      if (id === terminalIdRef.current) {
+        setHasExited(true);
+        setIsReady(false);
+        terminalIdRef.current = null;
+        terminal.writeln(`\r\n[terminal exited with code ${code}]`);
+      }
+    });
+
     const handleResize = () => {
       fitAddon.fit();
+      const terminalId = terminalIdRef.current;
+      if (terminalId) {
+        window.electron.terminal.resize(terminalId, terminal.cols, terminal.rows);
+      }
     };
     window.addEventListener('resize', handleResize);
 
+    void createSession();
+
     return () => {
-      unsubscribe();
+      unsubscribeData();
+      unsubscribeExit();
+      terminalDataSubscription.dispose();
+      terminalResizeSubscription.dispose();
       window.removeEventListener('resize', handleResize);
-      terminal.dispose();
+      const terminalId = terminalIdRef.current;
       if (terminalId) {
         window.electron.terminal.kill(terminalId);
+        terminalIdRef.current = null;
       }
+      createSessionRef.current = null;
+      terminal.dispose();
     };
-  }, [terminalId]);
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible || !fitAddonRef.current || !terminalRef.current) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      fitAddonRef.current?.fit();
+      const terminalId = terminalIdRef.current;
+      if (terminalId && terminalRef.current) {
+        window.electron.terminal.resize(terminalId, terminalRef.current.cols, terminalRef.current.rows);
+      }
+    });
+  }, [isVisible]);
 
   return (
-    <div className="terminal-container">
+    <div className="terminal-shell">
       <div className="terminal-header">
-        <span className="terminal-title">Terminal</span>
+        <div>
+          <span className="terminal-title">Терминал</span>
+          <p className="terminal-subtitle">Локальный shell для быстрых команд, скриптов и smoke-check flows.</p>
+        </div>
         <div className="terminal-actions">
           <button className="terminal-action" title="Clear" onClick={() => terminalRef.current?.clear()}>
-            Clear
+            Очистить
           </button>
-          {!isReady && <span className="terminal-status">Connecting...</span>}
+          {(hasExited || !isReady) && (
+            <button className="terminal-action" title="New session" onClick={() => void createSessionRef.current?.()}>
+              Новый сеанс
+            </button>
+          )}
+          <span className="terminal-status">
+            {hasExited ? 'Завершён' : isReady ? 'Подключён' : 'Подключение…'}
+          </span>
         </div>
       </div>
-      <div ref={containerRef} className="terminal-content" />
+      <div className="terminal-surface">
+        <div ref={containerRef} className="terminal-content" />
+      </div>
     </div>
   );
 }

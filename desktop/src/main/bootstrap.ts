@@ -1,7 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
 import { FreeClaudeBridge } from './freeclaude-bridge';
 import { TerminalManager } from './terminal';
 import { FileManager } from './file-manager';
@@ -237,11 +236,4 @@ app.on('second-instance', () => {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   }
-});
-
-// Security: Prevent new window creation
-app.on('web-contents-created', (_, contents) => {
-  contents.on('new-window', (event) => {
-    event.preventDefault();
-  });
 });

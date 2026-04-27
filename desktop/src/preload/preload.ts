@@ -1,26 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-type IPCChannel =
-  | 'window:minimize'
-  | 'window:maximize'
-  | 'window:close'
-  | 'app:version'
-  | 'shell:openExternal'
-  | 'freeclaude:send'
-  | 'freeclaude:cancel'
-  | 'terminal:create'
-  | 'terminal:write'
-  | 'terminal:resize'
-  | 'terminal:kill'
-  | 'dialog:openFile'
-  | 'dialog:saveFile'
-  | 'fs:readFile'
-  | 'fs:writeFile'
-  | 'fs:stat'
-  | 'fs:readdir'
-  | 'config:get'
-  | 'config:set';
-
 // Window controls
 const windowAPI = {
   minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -45,12 +24,16 @@ const freeclaudeAPI = {
   onMessage: (callback: (data: unknown) => void) => {
     const handler = (_: unknown, data: unknown) => callback(data);
     ipcRenderer.on('freeclaude:message', handler);
-    return () => ipcRenderer.removeListener('freeclaude:message', handler);
+    return () => {
+      ipcRenderer.removeListener('freeclaude:message', handler);
+    };
   },
   onError: (callback: (error: unknown) => void) => {
     const handler = (_: unknown, error: unknown) => callback(error);
     ipcRenderer.on('freeclaude:error', handler);
-    return () => ipcRenderer.removeListener('freeclaude:error', handler);
+    return () => {
+      ipcRenderer.removeListener('freeclaude:error', handler);
+    };
   }
 };
 
@@ -64,12 +47,16 @@ const terminalAPI = {
   onData: (callback: (id: string, data: string) => void) => {
     const handler = (_: unknown, { id, data }: { id: string; data: string }) => callback(id, data);
     ipcRenderer.on('terminal:data', handler);
-    return () => ipcRenderer.removeListener('terminal:data', handler);
+    return () => {
+      ipcRenderer.removeListener('terminal:data', handler);
+    };
   },
   onExit: (callback: (id: string, code: number) => void) => {
     const handler = (_: unknown, { id, code }: { id: string; code: number }) => callback(id, code);
     ipcRenderer.on('terminal:exit', handler);
-    return () => ipcRenderer.removeListener('terminal:exit', handler);
+    return () => {
+      ipcRenderer.removeListener('terminal:exit', handler);
+    };
   }
 };
 

@@ -91,7 +91,7 @@ export class TerminalManager extends EventEmitter {
   }
 
   dispose(): void {
-    for (const [id, terminal] of this.terminals) {
+    for (const terminal of this.terminals.values()) {
       terminal.pty.kill();
     }
     this.terminals.clear();

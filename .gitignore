@@ -1,6 +1,10 @@
 node_modules/
 dist/
 *.tsbuildinfo
+.DS_Store
+desktop/.vite/
+desktop/out/
+desktop/pnpm-lock.yaml
 .env
 .env.*
 .openclaude-profile.json

@@ -1,4 +1,13 @@
+const fs = require('fs');
 const path = require('path');
+
+const copyPackagedModule = (buildPath, moduleName) => {
+  const source = path.join(__dirname, 'node_modules', moduleName);
+  const target = path.join(buildPath, '.vite', 'node_modules', moduleName);
+
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.cpSync(source, target, { recursive: true });
+};
 
 module.exports = {
   packagerConfig: {
@@ -6,7 +15,15 @@ module.exports = {
     executableName: 'FreeClaude',
     icon: path.join(__dirname, 'assets/icon.icns'),
     appBundleId: 'com.freeclaude.desktop',
-    asar: true
+    asar: {
+      unpack: '**/.vite/node_modules/node-pty/build/Release/spawn-helper'
+    }
+  },
+  hooks: {
+    packageAfterCopy: async (_forgeConfig, buildPath) => {
+      copyPackagedModule(buildPath, 'node-pty');
+      copyPackagedModule(buildPath, 'node-addon-api');
+    }
   },
   makers: [
     {
@@ -21,6 +38,10 @@ module.exports = {
     }
   ],
   plugins: [
+    {
+      name: '@electron-forge/plugin-auto-unpack-natives',
+      config: {}
+    },
     {
       name: '@electron-forge/plugin-vite',
       config: {

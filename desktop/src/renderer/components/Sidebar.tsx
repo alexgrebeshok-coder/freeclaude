@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAppVersion } from '../hooks/useAppVersion';
 
 type View = 'chat' | 'terminal' | 'files' | 'settings';
 
@@ -8,6 +9,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps): React.ReactElement {
+  const version = useAppVersion();
   const items: { id: View; label: string; icon: string }[] = [
     { id: 'chat', label: 'Chat', icon: '💬' },
     { id: 'terminal', label: 'Terminal', icon: '💻' },
@@ -47,7 +49,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps): React.React
       </nav>
 
       <div className="sidebar-footer">
-        <span className="version">v{window.electron?.app?.getVersion?.() || '0.1.0'}</span>
+        <span className="version">v{version}</span>
       </div>
     </aside>
   );

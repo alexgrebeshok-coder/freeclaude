@@ -1,32 +1,37 @@
-import React, { useState, useRef, useEffect } from 'react';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant' | 'tool';
-  content: string;
-  timestamp: number;
-  toolCalls?: ToolCall[];
-}
-
-interface ToolCall {
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-  output?: unknown;
-}
+import React, { useRef, useEffect } from 'react';
+import { Message } from '../types';
+import { Icon } from './ui/Icon';
 
 interface ChatProps {
+  title: string;
   messages: Message[];
   streamingMessage: string;
   isGenerating: boolean;
+  draft: string;
+  lastError?: string;
   onSend: (content: string) => void;
+  onDraftChange: (value: string) => void;
   onCancel: () => void;
 }
 
-export function Chat({ messages, streamingMessage, isGenerating, onSend, onCancel }: ChatProps): React.ReactElement {
-  const [input, setInput] = useState('');
+const EMPTY_STATE_SUGGESTIONS = [
+  'Собери план реализации новой фичи',
+  'Проведи аудит архитектуры текущего приложения',
+  'Найди узкие места в UX и предложи улучшения'
+];
+
+export function Chat({
+  title,
+  messages,
+  streamingMessage,
+  isGenerating,
+  draft,
+  lastError,
+  onSend,
+  onDraftChange,
+  onCancel
+}: ChatProps): React.ReactElement {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,17 +41,20 @@ export function Chat({ messages, streamingMessage, isGenerating, onSend, onCance
     scrollToBottom();
   }, [messages, streamingMessage]);
 
+  const submitDraft = () => {
+    if (!draft.trim() || isGenerating) return;
+    onSend(draft.trim());
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isGenerating) return;
-    onSend(input.trim());
-    setInput('');
+    submitDraft();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      submitDraft();
     }
   };
 
@@ -55,117 +63,131 @@ export function Chat({ messages, streamingMessage, isGenerating, onSend, onCance
   };
 
   return (
-    <div className="chat-container">
-      <div className="chat-messages">
-        {messages.length === 0 && !streamingMessage && (
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <svg width="64" height="64" viewBox="0 0 32 32" fill="none">
-                <defs>
-                  <linearGradient id="empty-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#6366f1" />
-                    <stop offset="100%" stopColor="#8b5cf6" />
-                  </linearGradient>
-                </defs>
-                <rect width="32" height="32" rx="8" fill="url(#empty-gradient)" />
-                <text x="16" y="22" textAnchor="middle" fill="white" fontSize="14" fontWeight="bold">F</text>
-              </svg>
+    <div className="chat-workspace">
+      <div className="chat-scroll-region">
+        <div className="conversation-lane">
+          <header className="conversation-header-card">
+            <div>
+              <span className="conversation-kicker">Активная сессия</span>
+              <h2 className="conversation-title">{title}</h2>
             </div>
-            <h2>Welcome to FreeClaude</h2>
-            <p>Your AI coding assistant powered by GLM-5.1 and more.</p>
-            <div className="suggestions">
-              <button onClick={() => onSend('Help me understand this codebase')}>
-                Help me understand this codebase
-              </button>
-              <button onClick={() => onSend('Explain this file to me')}>
-                Explain this file to me
-              </button>
-              <button onClick={() => onSend('Show me how to refactor this')}>
-                Show me how to refactor this
-              </button>
-            </div>
-          </div>
-        )}
-
-        {messages.map(message => (
-          <div key={message.id} className={`message message-${message.role}`}>
-            <div className="message-header">
-              <span className="message-role">
-                {message.role === 'user' ? 'You' : message.role === 'assistant' ? 'FreeClaude' : 'Tool'}
+            <div className="conversation-badges">
+              <span className="conversation-badge">
+                <Icon name="chat" size={14} />
+                <span>{messages.length} сообщений</span>
               </span>
-              <span className="message-time">{formatTime(message.timestamp)}</span>
-            </div>
-            <div className="message-content">
-              <pre className="message-text">{message.content}</pre>
-              {message.toolCalls && message.toolCalls.length > 0 && (
-                <div className="tool-calls">
-                  {message.toolCalls.map(tool => (
-                    <div key={tool.id} className="tool-call">
-                      <div className="tool-header">
-                        <span className="tool-icon">🔧</span>
-                        <span className="tool-name">{tool.name}</span>
-                      </div>
-                      <div className="tool-input">
-                        <code>{JSON.stringify(tool.input, null, 2)}</code>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {isGenerating && (
+                <span className="conversation-badge conversation-badge-live">
+                  <span className="topbar-status-dot" />
+                  <span>Стриминг ответа</span>
+                </span>
               )}
             </div>
-          </div>
-        ))}
+          </header>
 
-        {streamingMessage && (
-          <div className="message message-assistant streaming">
-            <div className="message-header">
-              <span className="message-role">FreeClaude</span>
-              <span className="streaming-indicator">▋</span>
+          {lastError && (
+            <div className="conversation-alert">
+              <span>{lastError}</span>
             </div>
-            <div className="message-content">
-              <pre className="message-text">{streamingMessage}</pre>
-            </div>
-          </div>
-        )}
+          )}
 
-        <div ref={messagesEndRef} />
+          {messages.length === 0 && !streamingMessage && (
+            <div className="conversation-empty-card">
+              <div className="conversation-empty-copy">
+                <span className="conversation-kicker">Новая ветка диалога</span>
+                <h3>Начните разговор с полноценным контекстом</h3>
+                <p>Composer и весь чат уже готовы: можно отправить промпт, открыть терминал, проверить файлы или перейти к настройкам провайдера.</p>
+              </div>
+              <div className="conversation-empty-actions">
+                {EMPTY_STATE_SUGGESTIONS.map((suggestion) => (
+                  <button key={suggestion} className="ghost-action-button" onClick={() => onSend(suggestion)}>
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {messages.map(message => (
+            <article key={message.id} className={`message-card message-card-${message.role}`}>
+              <div className="message-card-head">
+                <span className="message-role">
+                  {message.role === 'user' ? 'Вы' : message.role === 'assistant' ? 'FreeClaude' : 'Система'}
+                </span>
+                <span className="message-time">{formatTime(message.timestamp)}</span>
+              </div>
+              <div className="message-card-body">
+                <pre className="message-text">{message.content}</pre>
+                {message.toolCalls && message.toolCalls.length > 0 && (
+                  <div className="tool-stack">
+                    {message.toolCalls.map(tool => (
+                      <div key={tool.id} className="tool-card">
+                        <div className="tool-card-header">
+                          <Icon name="sparkles" size={14} />
+                          <span className="tool-name">{tool.name}</span>
+                        </div>
+                        <div className="tool-card-input">
+                          <code>{JSON.stringify(tool.input, null, 2)}</code>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+
+          {streamingMessage && (
+            <article className="message-card message-card-assistant message-card-streaming">
+              <div className="message-card-head">
+                <span className="message-role">FreeClaude</span>
+                <span className="streaming-indicator">Генерирует ответ…</span>
+              </div>
+              <div className="message-card-body">
+                <pre className="message-text">{streamingMessage}</pre>
+              </div>
+            </article>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      <div className="chat-input-container">
-        <form onSubmit={handleSubmit} className="chat-input-form">
-          <div className="input-wrapper">
+      <div className="chat-composer-dock">
+        <form onSubmit={handleSubmit} className="chat-composer-card">
+          <div className="chat-composer-header">
+            <span className="chat-composer-caption">Продолжить работу</span>
+            <span className="chat-composer-meta">{isGenerating ? 'Можно остановить ответ' : 'Enter — отправить, Shift+Enter — новая строка'}</span>
+          </div>
+          <div className="chat-composer-body">
             <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+              value={draft}
+              onChange={(e) => onDraftChange(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask FreeClaude anything..."
-              rows={1}
+              placeholder="Продолжите диалог, опишите задачу, добавьте ограничения или попросите план."
+              rows={3}
               disabled={isGenerating}
-              className="chat-input"
+              className="composer-input composer-input-chat"
             />
             {isGenerating ? (
               <button
                 type="button"
-                className="send-button cancel"
+                className="composer-send composer-send-cancel"
                 onClick={onCancel}
               >
-                <span className="icon">⏹</span>
+                <Icon name="stop" size={15} />
               </button>
             ) : (
               <button
                 type="submit"
-                className="send-button"
-                disabled={!input.trim()}
+                className="composer-send"
+                disabled={!draft.trim()}
               >
-                <span className="icon">➤</span>
+                <Icon name="arrow-up" size={16} />
               </button>
             )}
           </div>
         </form>
-        <div className="input-hint">
-          Press <kbd>Enter</kbd> to send, <kbd>Shift+Enter</kbd> for new line
-        </div>
       </div>
     </div>
   );

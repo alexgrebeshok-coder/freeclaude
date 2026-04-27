@@ -1,27 +1,42 @@
+import { app } from 'electron';
 import { EventEmitter } from 'events';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
-interface FreeClaudeMessage {
-  type: 'message' | 'tool' | 'error' | 'done';
+interface FreeClaudeRequest {
+  type?: string;
   content?: string;
-  tool_name?: string;
-  tool_input?: Record<string, unknown>;
-  tool_output?: unknown;
-  error?: string;
+  sessionId?: string;
+}
+
+interface StreamJsonContentPart {
+  type?: string;
+  text?: string;
+}
+
+interface StreamJsonMessage {
+  content?: StreamJsonContentPart[];
+}
+
+interface StreamJsonEvent {
+  type?: string;
+  subtype?: string;
+  is_error?: boolean;
+  message?: StreamJsonMessage;
+  result?: string;
+  session_id?: string;
 }
 
 export class FreeClaudeBridge extends EventEmitter {
   private process: ChildProcess | null = null;
   private buffer = '';
-  private messageQueue: unknown[] = [];
-  private isReady = false;
+  private cliPath: string | null = null;
+  private wasCancelled = false;
 
   private getConfigPath(): string {
-    const homeDir = os.homedir();
-    return path.join(homeDir, '.freeclaude', 'config.json');
+    return path.join(app.getPath('userData'), 'config', 'settings.json');
   }
 
   private loadConfig(): Record<string, unknown> {
@@ -36,45 +51,132 @@ export class FreeClaudeBridge extends EventEmitter {
     return {};
   }
 
-  start(): void {
-    if (this.process) {
-      return;
+  private resolveCliPath(): string | null {
+    const primaryPath = '/opt/homebrew/bin/freeclaude';
+    const altPaths = [
+      '/usr/local/bin/freeclaude',
+      path.join(os.homedir(), '.local', 'bin', 'freeclaude'),
+      path.join(os.homedir(), 'bin', 'freeclaude')
+    ];
+
+    for (const candidate of [primaryPath, ...altPaths]) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
 
-    const cliPath = '/opt/homebrew/bin/freeclaude';
+    return null;
+  }
 
-    // Check if freeclaude exists
-    if (!fs.existsSync(cliPath)) {
-      // Try other common locations
-      const altPaths = [
-        '/usr/local/bin/freeclaude',
-        path.join(os.homedir(), '.local', 'bin', 'freeclaude'),
-        path.join(os.homedir(), 'bin', 'freeclaude')
-      ];
+  start(): void {
+    this.cliPath = this.resolveCliPath();
 
-      for (const alt of altPaths) {
-        if (fs.existsSync(alt)) {
-          return this.startWithPath(alt);
-        }
-      }
-
+    if (!this.cliPath) {
       this.emit('error', { error: 'FreeClaude CLI not found. Please install it first.' });
       return;
     }
 
-    this.startWithPath(cliPath);
+    this.emit('ready');
   }
 
-  private startWithPath(cliPath: string): void {
-    const config = this.loadConfig();
+  private parseEvent(line: string): void {
+    let event: StreamJsonEvent;
 
-    this.process = spawn(cliPath, ['--json-rpc'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
+    try {
+      event = JSON.parse(line) as StreamJsonEvent;
+    } catch {
+      return;
+    }
+
+    if (event.session_id) {
+      this.emit('message', { type: 'session', sessionId: event.session_id });
+    }
+
+    if (event.is_error) {
+      this.emit('error', { error: event.result || 'FreeClaude request failed.' });
+      return;
+    }
+
+    if (event.type === 'assistant') {
+      const content = (event.message?.content || [])
+        .filter((part) => part.type === 'text' && typeof part.text === 'string')
+        .map((part) => part.text)
+        .join('');
+
+      if (content) {
+        this.emit('message', { type: 'content', content });
+      }
+      return;
+    }
+
+    if (event.type === 'result') {
+      if (event.is_error) {
+        this.emit('error', { error: event.result || 'FreeClaude request failed.' });
+        return;
+      }
+
+      this.emit('message', { type: 'done', done: true });
+    }
+  }
+
+  private handleData(data: string): void {
+    this.buffer += data;
+    const lines = this.buffer.split('\n');
+    this.buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) {
+        continue;
+      }
+
+      this.parseEvent(trimmedLine);
+    }
+  }
+
+  send(message: unknown): void {
+    if (!this.cliPath) {
+      this.start();
+    }
+
+    if (!this.cliPath) {
+      return;
+    }
+
+    if (this.process) {
+      this.emit('error', { error: 'A FreeClaude request is already running.' });
+      return;
+    }
+
+    const request = message as FreeClaudeRequest;
+    const prompt = typeof request.content === 'string' ? request.content.trim() : '';
+    const sessionId = typeof request.sessionId === 'string' ? request.sessionId : '';
+
+    if (!prompt) {
+      this.emit('error', { error: 'Cannot send an empty message.' });
+      return;
+    }
+
+    const config = this.loadConfig();
+    this.wasCancelled = false;
+    this.buffer = '';
+
+    const args = [
+      ...(sessionId ? ['--resume', sessionId] : []),
+      '-p',
+      '--verbose',
+      '--output-format',
+      'stream-json',
+      prompt
+    ];
+
+    this.process = spawn(this.cliPath, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        FREECLAUDE_API_KEY: config.api_key as string || process.env.FREECLAUDE_API_KEY || '',
-        FREECLAUDE_PROVIDER: config.provider as string || 'glm',
-        FREECLAUDE_MODEL: config.model as string || 'glm-5.1'
+        FREECLAUDE_API_KEY: config.apiKey as string || config.api_key as string || process.env.FREECLAUDE_API_KEY || '',
+        FREECLAUDE_PROVIDER: config.provider as string || process.env.FREECLAUDE_PROVIDER || '',
+        FREECLAUDE_MODEL: config.model as string || process.env.FREECLAUDE_MODEL || ''
       }
     });
 
@@ -83,9 +185,11 @@ export class FreeClaudeBridge extends EventEmitter {
     });
 
     this.process.stderr?.on('data', (data: Buffer) => {
-      const error = data.toString();
-      console.error('FreeClaude stderr:', error);
-      this.emit('error', { error });
+      const error = data.toString().trim();
+      if (error) {
+        console.error('FreeClaude stderr:', error);
+        this.emit('error', { error });
+      }
     });
 
     this.process.on('error', (error) => {
@@ -94,74 +198,29 @@ export class FreeClaudeBridge extends EventEmitter {
     });
 
     this.process.on('exit', (code) => {
-      console.log('FreeClaude process exited with code:', code);
-      this.process = null;
-      this.isReady = false;
+      const shouldReportError = !this.wasCancelled && code !== 0 && code !== null;
 
-      if (code !== 0 && code !== null) {
+      this.process = null;
+      this.buffer = '';
+      this.wasCancelled = false;
+
+      if (shouldReportError) {
         this.emit('error', { error: `FreeClaude CLI exited with code ${code}` });
       }
     });
-
-    this.isReady = true;
-
-    // Send any queued messages
-    while (this.messageQueue.length > 0) {
-      const message = this.messageQueue.shift();
-      if (message) {
-        this.sendRaw(message);
-      }
-    }
-
-    this.emit('ready');
-  }
-
-  private handleData(data: string): void {
-    this.buffer += data;
-
-    // Process complete JSON objects (newline-delimited)
-    const lines = this.buffer.split('\n');
-    this.buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-    for (const line of lines) {
-      if (line.trim()) {
-        try {
-          const message = JSON.parse(line) as FreeClaudeMessage;
-          this.emit('message', message);
-        } catch (error) {
-          console.error('Failed to parse message:', line, error);
-          this.emit('error', { error: 'Failed to parse response from FreeClaude' });
-        }
-      }
-    }
-  }
-
-  send(message: unknown): void {
-    if (!this.isReady || !this.process) {
-      this.messageQueue.push(message);
-      return;
-    }
-    this.sendRaw(message);
-  }
-
-  private sendRaw(message: unknown): void {
-    if (this.process?.stdin) {
-      const json = JSON.stringify(message);
-      this.process.stdin.write(json + '\n');
-    }
   }
 
   cancel(): void {
-    this.send({ type: 'cancel' });
-  }
-
-  stop(): void {
     if (this.process) {
+      this.wasCancelled = true;
       this.process.kill('SIGTERM');
       this.process = null;
     }
-    this.isReady = false;
-    this.messageQueue = [];
+    this.buffer = '';
+  }
+
+  stop(): void {
+    this.cancel();
   }
 
   isRunning(): boolean {

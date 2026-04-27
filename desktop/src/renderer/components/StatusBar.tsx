@@ -7,7 +7,6 @@ interface StatusBarProps {
 export function StatusBar({ isGenerating }: StatusBarProps): React.ReactElement {
   const [provider, setProvider] = useState('GLM-5.1');
   const [connected, setConnected] = useState(true);
-  const [cwd, setCwd] = useState('~');
 
   useEffect(() => {
     const loadConfig = async () => {
