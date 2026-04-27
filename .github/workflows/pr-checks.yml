@@ -39,6 +39,11 @@ jobs:
       - name: Typecheck supported surfaces
         run: npm run typecheck:supported
 
+      - name: Install desktop and extension dependencies
+        run: |
+          npm install --prefix desktop --no-package-lock --ignore-scripts
+          npm install --prefix extension --no-package-lock --ignore-scripts
+
       - name: Desktop & Extension typecheck
         run: npm run typecheck:desktop-extension
 
