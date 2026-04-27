@@ -1,7 +1,7 @@
 {
   "name": "freeclaude-desktop",
   "productName": "FreeClaude",
-  "version": "0.1.0",
+  "version": "3.4.0",
   "description": "FreeClaude Desktop - AI-powered coding assistant",
   "author": "FreeClaude",
   "main": ".vite/build/bootstrap.js",
