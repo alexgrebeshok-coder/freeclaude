@@ -36,6 +36,12 @@ export const InvokeChannels = {
   freeclaudeGetModels: 'freeclaude:getModels',
   freeclaudeGetResolvedConfig: 'freeclaude:getResolvedConfig',
 
+  providerSaveConfig: 'provider:saveConfig',
+  providerSetApiKey: 'provider:setApiKey',
+  providerClearApiKey: 'provider:clearApiKey',
+  providerSetActive: 'provider:setActive',
+  providerTestConnection: 'provider:testConnection',
+
   terminalCreate: 'terminal:create',
   terminalWrite: 'terminal:write',
   terminalResize: 'terminal:resize',
@@ -106,7 +112,23 @@ export const FreeClaudeProviderInfoSchema = z.object({
   name: z.string(),
   short: z.string(),
   models: z.array(z.string()),
-  configured: z.boolean()
+  configured: z.boolean(),
+  enabled: z.boolean().optional(),
+  baseUrl: z.string().optional(),
+  defaultModel: z.string().optional(),
+  kind: z.string().optional(),
+  modelSource: z.string().optional(),
+  authRequired: z.boolean().optional(),
+  price: z.object({
+    inputPerMillion: z.number(),
+    outputPerMillion: z.number()
+  }).optional(),
+  keyStatus: z.object({
+    configured: z.boolean(),
+    encrypted: z.boolean(),
+    last4: z.string().optional(),
+    updatedAt: z.number().optional()
+  }).optional()
 });
 
 export const FreeClaudeProvidersPayloadSchema = z.object({
@@ -115,18 +137,51 @@ export const FreeClaudeProvidersPayloadSchema = z.object({
   activeModel: z.string().nullable(),
   providers: z.array(FreeClaudeProviderInfoSchema),
   configPath: z.string(),
+  localConfigPath: z.string().optional(),
   cliPath: z.string().nullable(),
-  cliSource: z.string().nullable()
+  cliSource: z.string().nullable(),
+  encryptionAvailable: z.boolean().optional()
 });
 
 export const FreeClaudeResolvedConfigSchema = z.object({
   provider: z.string(),
   model: z.string(),
-  apiKey: z.string(),
+  baseUrl: z.string().optional(),
+  apiKeyConfigured: z.boolean().optional(),
+  apiKeyLast4: z.string().optional(),
+  providerShort: z.string().optional(),
   cliPath: z.string().nullable(),
   cliSource: z.string().nullable(),
   localConfigPath: z.string(),
   desktopConfigPath: z.string()
+});
+
+export const ProviderConfigUpdateSchema = z.object({
+  id: z.string().min(1).max(128),
+  enabled: z.boolean().optional(),
+  baseUrl: z.string().max(2048).optional(),
+  defaultModel: z.string().max(256).optional(),
+  customModels: z.array(z.string().max(256)).max(100).optional()
+});
+
+export const ProviderSetApiKeyRequestSchema = z.object({
+  providerId: z.string().min(1).max(128),
+  apiKey: z.string().max(16_384)
+});
+
+export const ProviderIdRequestSchema = z.object({
+  providerId: z.string().min(1).max(128)
+});
+
+export const ProviderSetActiveRequestSchema = z.object({
+  providerId: z.string().min(1).max(128),
+  model: z.string().max(256).optional()
+});
+
+export const ProviderConnectionTestRequestSchema = z.object({
+  providerId: z.string().min(1).max(128),
+  baseUrl: z.string().max(2048).optional(),
+  apiKey: z.string().max(16_384).optional()
 });
 
 export const FreeClaudeMessageEventSchema = z.discriminatedUnion('type', [
@@ -350,6 +405,12 @@ export const InvokeSchemas = {
   [InvokeChannels.freeclaudeGetProviders]: z.tuple([]).optional(),
   [InvokeChannels.freeclaudeGetModels]: z.tuple([z.string().optional()]).optional(),
   [InvokeChannels.freeclaudeGetResolvedConfig]: z.tuple([]).optional(),
+
+  [InvokeChannels.providerSaveConfig]: z.tuple([ProviderConfigUpdateSchema]),
+  [InvokeChannels.providerSetApiKey]: z.tuple([ProviderSetApiKeyRequestSchema]),
+  [InvokeChannels.providerClearApiKey]: z.tuple([ProviderIdRequestSchema]),
+  [InvokeChannels.providerSetActive]: z.tuple([ProviderSetActiveRequestSchema]),
+  [InvokeChannels.providerTestConnection]: z.tuple([ProviderConnectionTestRequestSchema]),
 
   [InvokeChannels.terminalCreate]: z.tuple([TerminalCreateRequestSchema]).optional(),
   [InvokeChannels.terminalWrite]: TerminalWriteRequestSchema,

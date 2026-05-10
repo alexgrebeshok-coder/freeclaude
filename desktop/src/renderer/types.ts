@@ -1,3 +1,5 @@
+import type { ProviderCatalogItem, ProviderPrice } from '../shared/provider-catalog';
+
 export type WorkspaceType =
   | 'home'
   | 'chat'
@@ -9,6 +11,34 @@ export type WorkspaceType =
   | 'settings';
 
 export type Provider = string;
+
+export interface ProviderKeyStatus {
+  configured: boolean;
+  encrypted: boolean;
+  last4?: string;
+  updatedAt?: number;
+}
+
+export interface ProviderInfo extends ProviderCatalogItem {
+  enabled: boolean;
+  baseUrl: string;
+  defaultModel: string;
+  configured: boolean;
+  keyStatus: ProviderKeyStatus;
+  price?: ProviderPrice;
+}
+
+export interface ProvidersPayload {
+  configured?: boolean;
+  activeProvider?: string | null;
+  activeModel?: string | null;
+  providers?: ProviderInfo[];
+  configPath?: string;
+  localConfigPath?: string;
+  cliPath?: string | null;
+  cliSource?: string | null;
+  encryptionAvailable?: boolean;
+}
 
 export interface ToolCall {
   id: string;
@@ -48,7 +78,6 @@ export interface ProjectSummary {
 
 export interface AppConfig {
   provider: Provider;
-  apiKey: string;
   model: string;
   theme: 'light' | 'dark' | 'auto';
   fontSize: number;

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Message } from '../types';
+import { Message, ProviderInfo } from '../types';
 import { Icon } from './ui/Icon';
 import { MarkdownMessage } from './chat/MarkdownMessage';
 
@@ -16,8 +16,11 @@ interface ChatProps {
   onCancel: () => void;
   composerRef?: React.RefObject<HTMLTextAreaElement | null>;
   onRegenerate?: () => void;
+  providerId?: string;
   providerLabel?: string;
   modelLabel?: string;
+  providers?: ProviderInfo[];
+  onProviderChange?: (providerId: string, model?: string) => Promise<void>;
 }
 
 const EMPTY_STATE_SUGGESTIONS = [
@@ -45,8 +48,11 @@ export function Chat({
   onCancel,
   composerRef,
   onRegenerate,
+  providerId,
   providerLabel,
-  modelLabel
+  modelLabel,
+  providers = [],
+  onProviderChange
 }: ChatProps): React.ReactElement {
   const { t } = useTranslation();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -100,6 +106,9 @@ export function Chat({
   }, [isNearBottom, title]);
 
   const providerModelLabel = providerLabel && modelLabel ? `${providerLabel} · ${modelLabel}` : null;
+  const activeProvider = providers.find((provider) => provider.id === providerId);
+  const modelOptions = activeProvider?.models || [];
+  const modelSelectValue = modelLabel && modelOptions.includes(modelLabel) ? modelLabel : '';
 
   const renderAssistantPending = () => {
     if (!isGenerating || streamingMessage) {
@@ -420,6 +429,45 @@ export function Chat({
               <span>{t('chat.composer.attachFile')}</span>
             </button>
             <div className="chat-composer-footer-meta">
+              {providers.length > 0 && onProviderChange && (
+                <div className="composer-provider-switcher" title={t('chat.composer.providerModelTitle')}>
+                  <select
+                    aria-label="Provider"
+                    value={activeProvider?.id || providers[0]?.id || ''}
+                    onChange={(event) => {
+                      const next = providers.find((provider) => provider.id === event.target.value);
+                      void onProviderChange(event.target.value, next?.defaultModel || next?.models[0]);
+                    }}
+                    disabled={isGenerating}
+                  >
+                    {providers.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.short}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Model"
+                    value={modelSelectValue}
+                    onChange={(event) => {
+                      const provider = activeProvider || providers[0];
+                      if (provider) void onProviderChange(provider.id, event.target.value);
+                    }}
+                    disabled={isGenerating || !activeProvider || modelOptions.length === 0}
+                  >
+                    {modelSelectValue === '' && (
+                      <option value="">
+                        {modelLabel || 'Model'}
+                      </option>
+                    )}
+                    {modelOptions.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {providerModelLabel && (
                 <span className="composer-model-chip" title={t('chat.composer.providerModelTitle')}>
                   {providerModelLabel}

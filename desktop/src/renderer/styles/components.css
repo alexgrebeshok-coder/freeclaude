@@ -62,8 +62,18 @@
 }
 
 .rail-section-icon:hover {
-  background: color-mix(in srgb, var(--color-text-strong) 7%, transparent);
+  background: var(--interactive-hover-bg);
   color: var(--color-text-strong);
+}
+
+.rail-section-icon:active,
+.composer-tool-icon:active:not(:disabled),
+.message-action-btn:active,
+.terminal-tab:active,
+.terminal-tab-new:active,
+.terminal-tab-close:active,
+.topbar-pill:not(.topbar-pill-static):active {
+  background: var(--interactive-active-bg);
 }
 
 .rail-section-badge {
@@ -90,20 +100,18 @@
   border-radius: var(--radius-sm);
   color: var(--color-text);
   font-size: 0.8rem;
-  transition:
-    background var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard);
+  line-height: var(--line-height-snug);
+  transition: var(--transition-colors);
 }
 
 .rail-link:hover,
 .rail-row:hover {
-  background: color-mix(in srgb, var(--color-text-strong) 6%, transparent);
+  background: var(--interactive-hover-bg);
 }
 
 .rail-link.active,
 .rail-row.active {
-  background: color-mix(in srgb, var(--color-text-strong) 8%, transparent);
+  background: var(--interactive-active-bg);
   color: var(--color-text-strong);
   box-shadow: none;
 }
@@ -475,6 +483,7 @@
   background: var(--color-surface-elevated);
   border: 1px solid var(--color-border);
   color: var(--color-text);
+  transition: var(--transition-colors);
 }
 
 .topbar-pill:hover {
@@ -1555,6 +1564,10 @@
   gap: 0;
 }
 
+.file-list-skeleton {
+  pointer-events: none;
+}
+
 .file-item {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) 74px 90px;
@@ -1566,6 +1579,8 @@
   border: 1px solid transparent;
   cursor: pointer;
   background: var(--color-surface-elevated);
+  line-height: var(--line-height-snug);
+  transition: var(--transition-colors);
 }
 
 .file-item:hover {
@@ -1576,6 +1591,37 @@
 .file-item.selected {
   background: var(--color-accent-soft);
   border-color: var(--color-border-strong);
+}
+
+.file-item-skeleton {
+  height: 56px; /* Keep in sync with ROW_HEIGHT in FileExplorer.tsx */
+  cursor: default;
+  pointer-events: none;
+}
+
+.file-item-skeleton:hover {
+  border-color: transparent;
+  background: var(--color-surface-elevated);
+}
+
+.file-skeleton-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+}
+
+.file-skeleton-name {
+  width: min(260px, 80%);
+}
+
+.file-skeleton-size {
+  width: 44px;
+  justify-self: end;
+}
+
+.file-skeleton-date {
+  width: 68px;
+  justify-self: end;
 }
 
 .file-name {
@@ -2453,6 +2499,91 @@
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-ring);
   background: var(--color-surface-elevated);
+}
+
+.provider-card-grid-detailed {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: stretch;
+}
+
+.provider-card-detailed {
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.provider-card-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.provider-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.provider-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.provider-key-row input,
+.provider-card-detailed textarea {
+  min-height: 38px;
+  padding: 8px 10px;
+  background: var(--color-surface-elevated);
+}
+
+.provider-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.provider-test-result {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.provider-test-success {
+  color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.provider-test-error {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger-border);
+}
+
+.settings-toggle {
+  min-width: 54px;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  background: var(--color-surface-elevated);
+}
+
+.settings-toggle.on {
+  color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.settings-toggle.off {
+  color: var(--color-text-soft);
 }
 
 .provider-card-badge {

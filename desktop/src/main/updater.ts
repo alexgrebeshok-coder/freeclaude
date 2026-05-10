@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { autoUpdater, type UpdateInfo, type ProgressInfo } from 'electron-updater';
-import { EventChannels } from '../shared/ipc-contract';
+import { EventChannels, EventSchemas, validateEvent } from '../shared/ipc-contract';
 import { getLogger } from './logger';
 
 /**
@@ -54,7 +54,13 @@ export function setupAutoUpdater(getMainWindow: () => BrowserWindow | null): voi
   const send = (payload: unknown): void => {
     const win = getMainWindow();
     if (win && !win.isDestroyed()) {
-      win.webContents.send(EventChannels.updaterStatus, payload);
+      const validated = validateEvent(
+        EventChannels.updaterStatus,
+        EventSchemas[EventChannels.updaterStatus],
+        payload,
+        (err) => log.warn('updater-invalid-event-payload', { error: err.message })
+      );
+      win.webContents.send(EventChannels.updaterStatus, validated);
     }
   };
 

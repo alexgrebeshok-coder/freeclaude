@@ -7,6 +7,7 @@ interface TopUtilityBarProps {
   activeTitle: string;
   projectLabel: string;
   config: AppConfig;
+  providerLabel?: string;
   status: 'ready' | 'working' | 'error';
   lastError: string | null;
   onSelectWorkspace: (workspace: WorkspaceSelection) => void;
@@ -19,6 +20,7 @@ export function TopUtilityBar({
   activeTitle,
   projectLabel,
   config,
+  providerLabel,
   status,
   lastError,
   onSelectWorkspace,
@@ -58,7 +60,7 @@ export function TopUtilityBar({
         <div className="topbar-pill topbar-pill-static topbar-pill-model" title="Провайдер и модель">
           <Icon name="sparkles" size={15} />
           <span>
-            {config.provider.toUpperCase()} · {config.model}
+            {(providerLabel || config.provider.toUpperCase())} · {config.model}
           </span>
         </div>
 

@@ -39,18 +39,23 @@ function install(): void {
       cancel: noopAsync,
       getProviders: async () => ({
         configured: false,
-        activeProvider: null,
-        activeModel: null,
+        activeProvider: 'zai',
+        activeModel: 'glm-5.1',
         providers: [],
-        configPath: '~/.freeclaude.json',
+        configPath: '',
+        localConfigPath: '~/.freeclaude.json',
         cliPath: null,
-        cliSource: null
+        cliSource: null,
+        encryptionAvailable: true
       }),
       getModels: async () => [],
       getResolvedConfig: async () => ({
-        provider: '',
-        model: '',
-        apiKey: '',
+        provider: 'zai',
+        model: 'glm-5.1',
+        baseUrl: 'https://api.z.ai/api/coding/paas/v4',
+        apiKeyConfigured: false,
+        apiKeyLast4: undefined,
+        providerShort: 'ZAI',
         cliPath: null,
         cliSource: null,
         localConfigPath: '~/.freeclaude.json',
@@ -58,6 +63,13 @@ function install(): void {
       }),
       onMessage: () => noop,
       onError: () => noop
+    },
+    providers: {
+      saveConfig: async () => ({}),
+      setApiKey: async () => ({ configured: true, encrypted: true, last4: 'demo' }),
+      clearApiKey: async () => ({ configured: false, encrypted: false }),
+      setActive: async () => ({}),
+      testConnection: async () => ({ ok: true, message: 'Preview mode' })
     },
     terminal: {
       create: async () => 'browser-preview-terminal',

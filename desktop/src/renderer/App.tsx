@@ -17,14 +17,16 @@ import {
   ChatSession,
   FilePreview,
   Message,
+  ProviderInfo,
+  ProvidersPayload,
   ProjectSummary,
   WorkspaceSelection,
   WorkspaceType
 } from './types';
+import { getProviderCatalogItem, normalizeProviderId } from '../shared/provider-catalog';
 
 const DEFAULT_CONFIG: AppConfig = {
-  provider: 'glm',
-  apiKey: '',
+  provider: 'zai',
   model: 'glm-5.1',
   theme: 'light',
   fontSize: 14
@@ -57,6 +59,8 @@ export default function App(): React.ReactElement {
   const [searchQuery, setSearchQuery] = useState('');
   const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
   const [appConfig, setAppConfig] = useState<AppConfig>(DEFAULT_CONFIG);
+  const [providerOptions, setProviderOptions] = useState<ProviderInfo[]>([]);
+  const [providersMeta, setProvidersMeta] = useState<ProvidersPayload | null>(null);
   const [status, setStatus] = useState<'ready' | 'working' | 'error'>('ready');
   const [lastError, setLastError] = useState<string | null>(null);
   const [chatDiagnostics, setChatDiagnostics] = useState<Record<string, string[]>>({});
@@ -100,20 +104,19 @@ export default function App(): React.ReactElement {
     const loadConfig = async () => {
       try {
         const provider = await window.electron.config.get('provider') as AppConfig['provider'];
-        const apiKey = await window.electron.config.get('apiKey') as string;
         const model = await window.electron.config.get('model') as string;
         const theme = await window.electron.config.get('theme') as AppConfig['theme'];
         const fontSize = await window.electron.config.get('fontSize') as number;
-        const localProviders = await window.electron.freeclaude.getProviders() as {
-          activeProvider?: string | null;
-          activeModel?: string | null;
-          providers?: Array<{ id?: string; models?: string[] }>;
-        } | undefined;
+        const localProviders = await window.electron.freeclaude.getProviders() as ProvidersPayload | undefined;
         const firstProvider = localProviders?.providers?.[0];
+        if (localProviders) {
+          setProvidersMeta(localProviders);
+          setProviderOptions(localProviders.providers || []);
+        }
+        const normalizedProvider = normalizeProviderId(provider || localProviders?.activeProvider || firstProvider?.id);
 
         setAppConfig({
-          provider: provider || localProviders?.activeProvider || firstProvider?.id || DEFAULT_CONFIG.provider,
-          apiKey: apiKey || DEFAULT_CONFIG.apiKey,
+          provider: normalizedProvider || DEFAULT_CONFIG.provider,
           model: model || localProviders?.activeModel || firstProvider?.models?.[0] || DEFAULT_CONFIG.model,
           theme: theme || DEFAULT_CONFIG.theme,
           fontSize: fontSize || DEFAULT_CONFIG.fontSize
@@ -499,7 +502,6 @@ export default function App(): React.ReactElement {
 
   const saveConfig = useCallback(async (nextConfig: AppConfig) => {
     await window.electron.config.set('provider', nextConfig.provider);
-    await window.electron.config.set('apiKey', nextConfig.apiKey);
     await window.electron.config.set('model', nextConfig.model);
     await window.electron.config.set('theme', nextConfig.theme);
     await window.electron.config.set('fontSize', nextConfig.fontSize);
@@ -507,6 +509,47 @@ export default function App(): React.ReactElement {
     setStatus('ready');
     setLastError(null);
   }, []);
+
+  const reloadProviders = useCallback(async () => {
+    const payload = await window.electron.freeclaude.getProviders() as ProvidersPayload | undefined;
+    if (payload) {
+      setProvidersMeta(payload);
+      const list = payload.providers || [];
+      setProviderOptions(list);
+      const normalizedActive = normalizeProviderId(payload.activeProvider);
+      const activeProvider = list.find((provider) => provider.id === normalizedActive);
+      const fallback =
+        list.find((provider) => provider.enabled) ||
+        list[0];
+      const resolved = activeProvider || fallback;
+      if (resolved) {
+        const modelFromPayload = payload.activeModel;
+        const modelInList =
+          modelFromPayload && resolved.models.includes(modelFromPayload)
+            ? modelFromPayload
+            : resolved.defaultModel || resolved.models[0];
+        setAppConfig((prev) => ({
+          ...prev,
+          provider: resolved.id,
+          model: modelInList || prev.model
+        }));
+      }
+    }
+    return payload;
+  }, []);
+
+  const handleProviderChange = useCallback(async (providerId: string, model?: string) => {
+    const normalizedProvider = normalizeProviderId(providerId);
+    const selectedProvider = providerOptions.find((provider) => provider.id === normalizedProvider);
+    const selectedModel = model || selectedProvider?.defaultModel || selectedProvider?.models?.[0] || appConfig.model;
+    await window.electron.providers.setActive(normalizedProvider, selectedModel);
+    setAppConfig((prev) => ({
+      ...prev,
+      provider: normalizedProvider,
+      model: selectedModel
+    }));
+    await reloadProviders();
+  }, [appConfig.model, providerOptions, reloadProviders]);
 
   const handleSelectWorkspace = useCallback((workspace: WorkspaceSelection) => {
     setActiveWorkspace(workspace);
@@ -699,6 +742,12 @@ export default function App(): React.ReactElement {
   }, []);
 
   const activeTitle = getWorkspaceTitle(activeWorkspace.type, activeChat?.title);
+  const activeProviderInfo = providerOptions.find((provider) => provider.id === appConfig.provider);
+  const enabledProviderOptions = providerOptions.filter((provider) => provider.enabled);
+  const chatProviderOptions = activeProviderInfo && !enabledProviderOptions.some((provider) => provider.id === activeProviderInfo.id)
+    ? [activeProviderInfo, ...enabledProviderOptions]
+    : enabledProviderOptions;
+  const providerLabel = activeProviderInfo?.short || getProviderCatalogItem(appConfig.provider).short || appConfig.provider.toUpperCase();
 
   const handleRegenerateAssistant = useCallback(() => {
     if (!activeChat || activeChat.isGenerating) {
@@ -818,6 +867,7 @@ export default function App(): React.ReactElement {
           activeTitle={activeTitle}
           projectLabel={selectedProject.name}
           config={appConfig}
+          providerLabel={providerLabel}
           status={status}
           lastError={lastError}
           onSelectWorkspace={handleSelectWorkspace}
@@ -833,7 +883,7 @@ export default function App(): React.ReactElement {
               draft={homeDraft}
               isGenerating={status === 'working' && activeWorkspace.type === 'home'}
               projectLabel={selectedProject.name}
-              providerLabel={appConfig.provider.toUpperCase()}
+              providerLabel={providerLabel}
               modelLabel={appConfig.model}
               onDraftChange={setHomeDraft}
               onSend={(value) => submitPrompt(value)}
@@ -857,8 +907,11 @@ export default function App(): React.ReactElement {
                 onCancel={handleCancel}
                 composerRef={chatComposerRef}
                 onRegenerate={handleRegenerateAssistant}
-                providerLabel={appConfig.provider.toUpperCase()}
+                providerId={appConfig.provider}
+                providerLabel={providerLabel}
                 modelLabel={appConfig.model}
+                providers={chatProviderOptions}
+                onProviderChange={handleProviderChange}
               />
             ) : (
               <EmptyWorkspaceCard
@@ -950,7 +1003,7 @@ export default function App(): React.ReactElement {
               <div className="insight-grid insight-grid-three">
                 <InsightCard
                   title="Текущий провайдер"
-                  meta={appConfig.provider.toUpperCase()}
+                  meta={providerLabel}
                   description={`Модель ${appConfig.model} уже подключена к desktop bridge.`}
                   actionLabel="Открыть настройки"
                   onAction={() => handleSelectWorkspace({ type: 'settings' })}
@@ -1043,7 +1096,14 @@ export default function App(): React.ReactElement {
           </section>
 
           <section className={`workspace-panel ${activeWorkspace.type === 'settings' ? 'is-active' : ''}`}>
-            <Settings config={appConfig} onSave={saveConfig} />
+            <Settings
+              config={appConfig}
+              providersMeta={providersMeta}
+              providerOptions={providerOptions}
+              onProvidersReload={reloadProviders}
+              onProviderChange={handleProviderChange}
+              onSave={saveConfig}
+            />
           </section>
         </div>
       </div>
@@ -1062,6 +1122,7 @@ export default function App(): React.ReactElement {
         open={inspectorOpen}
         compact={inspectorCompact}
         config={appConfig}
+        provider={activeProviderInfo}
         activeChat={activeWorkspace.type === 'chat' ? activeChat : null}
         diagnostics={
           activeWorkspace.type === 'chat' && activeChat

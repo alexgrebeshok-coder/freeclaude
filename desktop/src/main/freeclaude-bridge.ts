@@ -11,29 +11,16 @@ import {
   ChatHistoryEntry
 } from '../shared/ipc-contract';
 import { getLogger } from './logger';
+import {
+  ProviderConfigStore,
+  ProviderConfigUpdate,
+  ProviderConnectionTestRequest
+} from './provider-config';
 
 interface ResolvedCli {
   command: string;
   baseArgs: string[];
   source: string;
-}
-
-interface FreeClaudeProviderInfo {
-  id: string;
-  name: string;
-  short: string;
-  models: string[];
-  configured: boolean;
-}
-
-interface FreeClaudeProvidersPayload {
-  configured: boolean;
-  activeProvider: string | null;
-  activeModel: string | null;
-  providers: FreeClaudeProviderInfo[];
-  configPath: string;
-  cliPath: string | null;
-  cliSource: string | null;
 }
 
 interface StreamJsonContentPart {
@@ -97,6 +84,10 @@ export class FreeClaudeBridge extends EventEmitter {
   private currentRequestId: string | null = null;
   private queue: QueuedRequest[] = [];
   private hangTimer: NodeJS.Timeout | null = null;
+  private readonly providerStore = new ProviderConfigStore(
+    this.getConfigPath(),
+    this.getLocalFreeClaudeConfigPath()
+  );
 
   private readonly HANG_TIMEOUT_MS = 60_000;
   private readonly MAX_BUFFER_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -107,25 +98,6 @@ export class FreeClaudeBridge extends EventEmitter {
 
   private getLocalFreeClaudeConfigPath(): string {
     return path.join(os.homedir(), '.freeclaude.json');
-  }
-
-  private readJsonFile(filePath: string): Record<string, unknown> {
-    try {
-      if (fs.existsSync(filePath)) {
-        return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
-      }
-    } catch (error) {
-      console.error(`Failed to load JSON from ${filePath}:`, error);
-    }
-    return {};
-  }
-
-  private loadDesktopConfig(): Record<string, unknown> {
-    return this.readJsonFile(this.getConfigPath());
-  }
-
-  private loadLocalConfig(): Record<string, unknown> {
-    return this.readJsonFile(this.getLocalFreeClaudeConfigPath());
   }
 
   private commandExists(command: string): boolean {
@@ -165,134 +137,42 @@ export class FreeClaudeBridge extends EventEmitter {
     return null;
   }
 
-  private asString(value: unknown): string {
-    return typeof value === 'string' ? value : '';
+  private resolveRuntimeConfig() {
+    return this.providerStore.resolveRuntimeConfig();
   }
 
-  private getProviderId(provider: Record<string, unknown>): string {
-    return this.asString(provider.id) || this.asString(provider.provider) || this.asString(provider.name);
-  }
-
-  private getProviderModels(provider: Record<string, unknown>): string[] {
-    const rawModels = provider.models;
-    if (!Array.isArray(rawModels)) {
-      const singleModel = this.asString(provider.model);
-      return singleModel ? [singleModel] : [];
-    }
-
-    return rawModels
-      .map((model) => {
-        if (typeof model === 'string') {
-          return model;
-        }
-        if (model && typeof model === 'object') {
-          const obj = model as Record<string, unknown>;
-          return this.asString(obj.id) || this.asString(obj.name) || this.asString(obj.model);
-        }
-        return '';
-      })
-      .filter(Boolean);
-  }
-
-  private getLocalProviders(): Record<string, unknown>[] {
-    const localConfig = this.loadLocalConfig();
-    return Array.isArray(localConfig.providers)
-      ? localConfig.providers.filter(
-          (provider): provider is Record<string, unknown> =>
-            Boolean(provider && typeof provider === 'object')
-        )
-      : [];
-  }
-
-  private resolveRuntimeConfig(): { provider: string; model: string; apiKey: string } {
-    const desktopConfig = this.loadDesktopConfig();
-    const localConfig = this.loadLocalConfig();
-    const providers = this.getLocalProviders();
-
-    const desktopProvider = this.asString(desktopConfig.provider);
-    const localActiveProvider =
-      this.asString(localConfig.activeProvider) || this.asString(localConfig.provider);
-    const provider =
-      desktopProvider || localActiveProvider || this.getProviderId(providers[0] || {});
-    const providerConfig =
-      providers.find((candidate) => this.getProviderId(candidate) === provider) || providers[0];
-    const providerModels = providerConfig ? this.getProviderModels(providerConfig) : [];
-
-    const desktopModel = this.asString(desktopConfig.model);
-    const localActiveModel =
-      this.asString(localConfig.activeModel) || this.asString(localConfig.model);
-    const model = desktopModel || localActiveModel || providerModels[0] || '';
-
-    const apiKey =
-      this.asString(desktopConfig.apiKey) || this.asString(desktopConfig.api_key);
-
-    return { provider, model, apiKey };
-  }
-
-  getProvidersInfo(): FreeClaudeProvidersPayload {
-    const providers = this.getLocalProviders()
-      .map((provider) => {
-        const id = this.getProviderId(provider);
-        const name =
-          this.asString(provider.displayName) ||
-          this.asString(provider.label) ||
-          this.asString(provider.name) ||
-          id;
-        return {
-          id,
-          name,
-          short:
-            this.asString(provider.short) ||
-            name
-              .split(/\s+/)
-              .map((part) => part[0])
-              .join('')
-              .slice(0, 4)
-              .toUpperCase() ||
-            id.toUpperCase(),
-          models: this.getProviderModels(provider),
-          configured: Boolean(
-            this.asString(provider.apiKey) ||
-              this.asString(provider.api_key) ||
-              this.asString(provider.key)
-          )
-        };
-      })
-      .filter((provider) => provider.id);
-
-    const runtime = this.resolveRuntimeConfig();
+  getProvidersInfo(): unknown {
     const cli = this.cli || this.resolveCli();
-
-    return {
-      configured: providers.length > 0,
-      activeProvider: runtime.provider || null,
-      activeModel: runtime.model || null,
-      providers,
-      configPath: this.getLocalFreeClaudeConfigPath(),
-      cliPath: cli?.command || null,
-      cliSource: cli?.source || null
-    };
+    return this.providerStore.getProvidersPayload(cli?.command || null, cli?.source || null);
   }
 
   getModels(providerId?: string): string[] {
-    const providers = this.getProvidersInfo().providers;
-    const runtime = this.resolveRuntimeConfig();
-    const targetProviderId = providerId || runtime.provider || providers[0]?.id;
-    const provider =
-      providers.find((candidate) => candidate.id === targetProviderId) || providers[0];
-    return provider?.models || [];
+    return this.providerStore.getModels(providerId);
   }
 
   getResolvedConfig(): Record<string, unknown> {
-    const runtime = this.resolveRuntimeConfig();
     const cli = this.cli || this.resolveCli();
-    return {
-      ...runtime,
-      cliPath: cli?.command || null,
-      cliSource: cli?.source || null,
-      localConfigPath: this.getLocalFreeClaudeConfigPath(),
-      desktopConfigPath: this.getConfigPath()
-    };
+    return this.providerStore.getResolvedConfigSummary(cli?.command || null, cli?.source || null);
+  }
+
+  saveProviderConfig(update: ProviderConfigUpdate): unknown {
+    return this.providerStore.saveProviderConfig(update);
+  }
+
+  setProviderApiKey(providerId: string, apiKey: string): unknown {
+    return this.providerStore.setProviderApiKey(providerId, apiKey);
+  }
+
+  clearProviderApiKey(providerId: string): unknown {
+    return this.providerStore.clearProviderApiKey(providerId);
+  }
+
+  setActiveProvider(providerId: string, model?: string): unknown {
+    return this.providerStore.setActiveProvider(providerId, model);
+  }
+
+  testProviderConnection(request: ProviderConnectionTestRequest): Promise<unknown> {
+    return this.providerStore.testConnection(request);
   }
 
   start(): void {
@@ -548,9 +428,7 @@ export class FreeClaudeBridge extends EventEmitter {
 
     const env = {
       ...process.env,
-      ...(runtimeConfig.apiKey ? { FREECLAUDE_API_KEY: runtimeConfig.apiKey } : {}),
-      ...(runtimeConfig.provider ? { FREECLAUDE_PROVIDER: runtimeConfig.provider } : {}),
-      ...(runtimeConfig.model ? { FREECLAUDE_MODEL: runtimeConfig.model } : {})
+      ...runtimeConfig.env
     };
 
     log.info('spawning CLI', {

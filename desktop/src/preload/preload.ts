@@ -11,7 +11,7 @@
  * effects; zod is transitively bundled but never executes at module load time.
  */
 import { contextBridge, ipcRenderer } from 'electron';
-import { InvokeChannels } from '../shared/ipc-contract';
+import { EventChannels, InvokeChannels } from '../shared/ipc-contract';
 
 // ---------------------------------------------------------------------------
 // Window controls
@@ -59,18 +59,33 @@ const freeclaudeAPI = {
   getResolvedConfig: () => ipcRenderer.invoke(InvokeChannels.freeclaudeGetResolvedConfig),
   onMessage: (callback: (data: unknown) => void) => {
     const handler = (_: unknown, data: unknown) => callback(data);
-    ipcRenderer.on('freeclaude:message', handler);
+    ipcRenderer.on(EventChannels.freeclaudeMessage, handler);
     return () => {
-      ipcRenderer.removeListener('freeclaude:message', handler);
+      ipcRenderer.removeListener(EventChannels.freeclaudeMessage, handler);
     };
   },
   onError: (callback: (error: unknown) => void) => {
     const handler = (_: unknown, error: unknown) => callback(error);
-    ipcRenderer.on('freeclaude:error', handler);
+    ipcRenderer.on(EventChannels.freeclaudeError, handler);
     return () => {
-      ipcRenderer.removeListener('freeclaude:error', handler);
+      ipcRenderer.removeListener(EventChannels.freeclaudeError, handler);
     };
   }
+};
+
+// ---------------------------------------------------------------------------
+// Provider settings
+// ---------------------------------------------------------------------------
+const providersAPI = {
+  saveConfig: (update: unknown) => ipcRenderer.invoke(InvokeChannels.providerSaveConfig, update),
+  setApiKey: (providerId: string, apiKey: string) =>
+    ipcRenderer.invoke(InvokeChannels.providerSetApiKey, { providerId, apiKey }),
+  clearApiKey: (providerId: string) =>
+    ipcRenderer.invoke(InvokeChannels.providerClearApiKey, { providerId }),
+  setActive: (providerId: string, model?: string) =>
+    ipcRenderer.invoke(InvokeChannels.providerSetActive, { providerId, model }),
+  testConnection: (request: unknown) =>
+    ipcRenderer.invoke(InvokeChannels.providerTestConnection, request)
 };
 
 // ---------------------------------------------------------------------------
@@ -85,16 +100,16 @@ const terminalAPI = {
   kill: (id: string) => ipcRenderer.invoke(InvokeChannels.terminalKill, id),
   onData: (callback: (id: string, data: string) => void) => {
     const handler = (_: unknown, { id, data }: { id: string; data: string }) => callback(id, data);
-    ipcRenderer.on('terminal:data', handler);
+    ipcRenderer.on(EventChannels.terminalData, handler);
     return () => {
-      ipcRenderer.removeListener('terminal:data', handler);
+      ipcRenderer.removeListener(EventChannels.terminalData, handler);
     };
   },
   onExit: (callback: (id: string, code: number) => void) => {
     const handler = (_: unknown, { id, code }: { id: string; code: number }) => callback(id, code);
-    ipcRenderer.on('terminal:exit', handler);
+    ipcRenderer.on(EventChannels.terminalExit, handler);
     return () => {
-      ipcRenderer.removeListener('terminal:exit', handler);
+      ipcRenderer.removeListener(EventChannels.terminalExit, handler);
     };
   }
 };
@@ -145,6 +160,7 @@ contextBridge.exposeInMainWorld('electron', {
   shell: shellAPI,
   paths: pathsAPI,
   freeclaude: freeclaudeAPI,
+  providers: providersAPI,
   terminal: terminalAPI,
   dialog: dialogAPI,
   fs: fsAPI,
@@ -164,6 +180,7 @@ declare global {
       shell: typeof shellAPI;
       paths: typeof pathsAPI;
       freeclaude: typeof freeclaudeAPI;
+      providers: typeof providersAPI;
       terminal: typeof terminalAPI;
       dialog: typeof dialogAPI;
       fs: typeof fsAPI;

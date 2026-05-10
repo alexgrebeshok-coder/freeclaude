@@ -69,16 +69,36 @@
 
   --font-ui: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  --font-size-xs: 0.72rem;
+  --font-size-sm: 0.82rem;
+  --font-size-md: 0.875rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.125rem;
+  --line-height-tight: 1.2;
+  --line-height-snug: 1.35;
+  --line-height-normal: 1.55;
+  --line-height-relaxed: 1.7;
 
   --duration-fast: 150ms;
   --duration-normal: 220ms;
   --duration-slow: 300ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --transition-colors:
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+  --transition-transform:
+    transform var(--duration-normal) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard);
+  --focus-ring: 0 0 0 4px var(--color-accent-ring);
 
   /* Editor chrome — Cursor-like neutrals */
   --color-editor-hover: color-mix(in srgb, var(--color-text-strong) 6%, transparent);
   --color-editor-active: color-mix(in srgb, var(--color-text-strong) 9%, transparent);
+  --interactive-hover-bg: var(--color-editor-hover);
+  --interactive-active-bg: var(--color-editor-active);
 }
 
 [data-theme='dark'] {
@@ -140,8 +160,8 @@ body {
   color: var(--color-text);
   background-color: var(--color-canvas);
   background-image: none;
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-normal);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   transition:
@@ -183,18 +203,20 @@ textarea {
   background: var(--color-surface-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  transition:
-    border-color var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-fast) var(--ease-standard),
-    background var(--duration-fast) var(--ease-standard);
+  transition: var(--transition-colors);
 }
 
 input:focus,
 select:focus,
 textarea:focus {
   outline: none;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 4px var(--color-accent-ring);
+  box-shadow: var(--focus-ring);
 }
 
 textarea {
@@ -252,7 +274,7 @@ kbd {
 
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 4px var(--color-accent-ring);
+  box-shadow: var(--focus-ring);
 }
 
 ::-webkit-scrollbar {

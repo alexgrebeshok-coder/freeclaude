@@ -20,6 +20,7 @@ interface FileExplorerProps {
 const ROW_HEIGHT = 56; // px — kept in sync with .file-item fixed height in components.css
 const OVERSCAN = 5;
 const VIRTUALIZE_THRESHOLD = 200;
+const SKELETON_ROW_COUNT = 8;
 
 interface VirtualSlice {
   visible: FileItem[];
@@ -283,6 +284,19 @@ export function FileExplorer({ onFileSelect }: FileExplorerProps): React.ReactEl
       ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
       : 0;
 
+  const renderSkeletonRows = () => (
+    <div className="file-list file-list-skeleton" aria-hidden="true">
+      {Array.from({ length: SKELETON_ROW_COUNT }).map((_, index) => (
+        <div className="file-item file-item-skeleton" key={index}>
+          <span className="file-skeleton-icon skeleton-line" />
+          <span className="file-skeleton-name skeleton-line" />
+          <span className="file-skeleton-size skeleton-line" />
+          <span className="file-skeleton-date skeleton-line" />
+        </div>
+      ))}
+    </div>
+  );
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -312,11 +326,12 @@ export function FileExplorer({ onFileSelect }: FileExplorerProps): React.ReactEl
         className="file-explorer-content"
         tabIndex={0}
         role="listbox"
+        aria-busy={loading}
         aria-label={t('files.listLabel', { path: currentPath ?? t('files.loading') })}
         onKeyDown={handleContainerKeyDown}
         onScroll={handleScroll}
       >
-        {loading && <div className="loading">{t('files.loading')}</div>}
+        {loading && renderSkeletonRows()}
         {error && <div className="error" role="alert">{error}</div>}
         {fileReadError && <div className="error file-read-error" role="alert">{fileReadError}</div>}
 

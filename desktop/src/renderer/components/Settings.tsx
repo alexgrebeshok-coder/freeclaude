@@ -1,73 +1,62 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useAppVersion } from '../hooks/useAppVersion';
-import { AppConfig, Provider } from '../types';
-
-interface ProviderOption {
-  id: Provider;
-  name: string;
-  short: string;
-  models: string[];
-  configured?: boolean;
-}
-
-interface ProvidersPayload {
-  configured?: boolean;
-  activeProvider?: string | null;
-  activeModel?: string | null;
-  providers?: ProviderOption[];
-  configPath?: string;
-  cliPath?: string | null;
-  cliSource?: string | null;
-}
-
-const FALLBACK_PROVIDERS: ProviderOption[] = [
-  {
-    id: 'glm',
-    name: 'GLM (Zhipu AI)',
-    short: 'ZAI',
-    models: ['glm-5.1', 'glm-4-air', 'glm-4-flash']
-  },
-  {
-    id: 'gemini',
-    name: 'Google Gemini',
-    short: 'Gemini',
-    models: ['gemini-1.5-pro', 'gemini-1.5-flash']
-  },
-  {
-    id: 'qwen',
-    name: 'Alibaba Qwen',
-    short: 'Qwen',
-    models: ['qwen-max', 'qwen-plus', 'qwen-turbo']
-  },
-  {
-    id: 'ollama',
-    name: 'Ollama (Local)',
-    short: 'Ollama',
-    models: ['llama3', 'llama3.1', 'mistral', 'codellama']
-  },
-  {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    short: 'DeepSeek',
-    models: ['deepseek-chat', 'deepseek-coder']
-  }
-];
+import { AppConfig, Provider, ProviderInfo, ProvidersPayload } from '../types';
+import { normalizeProviderId } from '../../shared/provider-catalog';
 
 type SettingsTab = 'general' | 'providers' | 'models' | 'diagnostics' | 'about';
+type SettingsState = AppConfig;
+
+interface SettingsProps {
+  config: AppConfig;
+  providersMeta: ProvidersPayload | null;
+  providerOptions: ProviderInfo[];
+  onProvidersReload: () => Promise<ProvidersPayload | undefined>;
+  onProviderChange: (providerId: string, model?: string) => Promise<void>;
+  onSave: (config: AppConfig) => Promise<void>;
+}
+
+interface ProviderDraft {
+  enabled: boolean;
+  baseUrl: string;
+  defaultModel: string;
+  customModelsText: string;
+}
+
+interface TestState {
+  status: 'idle' | 'testing' | 'success' | 'error';
+  message?: string;
+  models?: string[];
+}
 
 const tabButtonId = (id: SettingsTab) => `settings-tab-${id}`;
 const tabPanelId = (id: SettingsTab) => `settings-panel-${id}`;
 
-interface SettingsProps {
-  config: AppConfig;
-  onSave: (config: AppConfig) => Promise<void>;
+function makeProviderDraft(provider: ProviderInfo): ProviderDraft {
+  return {
+    enabled: provider.enabled,
+    baseUrl: provider.baseUrl,
+    defaultModel: provider.defaultModel || provider.models[0] || '',
+    customModelsText: ''
+  };
 }
 
-type SettingsState = AppConfig;
+function parseCustomModels(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
-export function Settings({ config, onSave }: SettingsProps): React.ReactElement {
+export function Settings({
+  config,
+  providersMeta,
+  providerOptions,
+  onProvidersReload,
+  onProviderChange,
+  onSave
+}: SettingsProps): React.ReactElement {
   const { t } = useTranslation();
   const version = useAppVersion();
   const [settings, setSettings] = useState<SettingsState>({ ...config });
@@ -76,9 +65,10 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [tab, setTab] = useState<SettingsTab>('providers');
   const [modelQuery, setModelQuery] = useState('');
-  const [providerOptions, setProviderOptions] = useState<ProviderOption[]>(FALLBACK_PROVIDERS);
-  const [providersMeta, setProvidersMeta] = useState<ProvidersPayload | null>(null);
   const [providersError, setProvidersError] = useState<string | null>(null);
+  const [providerDrafts, setProviderDrafts] = useState<Record<string, ProviderDraft>>({});
+  const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
+  const [testStates, setTestStates] = useState<Record<string, TestState>>({});
 
   // Diagnostics state
   const [logPath, setLogPath] = useState<string | null>(null);
@@ -98,30 +88,19 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
   }, [config]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadProviders = async () => {
-      try {
-        const payload = await window.electron.freeclaude.getProviders() as ProvidersPayload | undefined;
-        if (cancelled || !payload) return;
-
-        setProvidersMeta(payload);
-        setProvidersError(null);
-
-        if (Array.isArray(payload.providers) && payload.providers.length > 0) {
-          setProviderOptions(payload.providers);
-          setSettings((prev) => ({
-            ...prev,
-            provider: (prev.provider || payload.activeProvider || payload.providers?.[0]?.id || '') as Provider,
-            model: prev.model || payload.activeModel || payload.providers?.[0]?.models?.[0] || ''
-          }));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setProvidersError(error instanceof Error ? error.message : t('errors.loadProviders'));
+    setProviderDrafts((prev) => {
+      const next = { ...prev };
+      for (const provider of providerOptions) {
+        if (!next[provider.id]) {
+          next[provider.id] = makeProviderDraft(provider);
         }
       }
-    };
+      return next;
+    });
+  }, [providerOptions]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     const loadDiagnosticsInfo = async () => {
       try {
@@ -139,15 +118,13 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
       }
     };
 
-    void loadProviders();
     void loadDiagnosticsInfo();
-
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, []);
 
-  const currentProvider = providerOptions.find((p) => p.id === settings.provider);
+  const currentProvider = providerOptions.find((p) => p.id === settings.provider) || providerOptions[0];
 
   const filteredModels = useMemo(() => {
     const list = currentProvider?.models?.length
@@ -158,14 +135,36 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
     return list.filter((m) => m.toLowerCase().includes(q));
   }, [currentProvider, modelQuery, settings.model]);
 
+  const updateProviderDraft = (providerId: string, patch: Partial<ProviderDraft>) => {
+    const meta = providerOptions.find((p) => p.id === providerId);
+    if (!meta) {
+      return;
+    }
+    setProviderDrafts((prev) => ({
+      ...prev,
+      [providerId]: {
+        ...(prev[providerId] || makeProviderDraft(meta)),
+        ...patch
+      }
+    }));
+  };
+
+  const refreshProviders = async () => {
+    try {
+      await onProvidersReload();
+      setProvidersError(null);
+    } catch (error) {
+      setProvidersError(error instanceof Error ? error.message : t('errors.loadProviders'));
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setSaved(false);
     setSaveError(null);
     try {
       await onSave({
-        provider: settings.provider,
-        apiKey: settings.apiKey,
+        provider: normalizeProviderId(settings.provider),
         model: settings.model,
         theme: settings.theme,
         fontSize: settings.fontSize
@@ -177,6 +176,68 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleProviderSave = async (provider: ProviderInfo) => {
+    const draft = providerDrafts[provider.id] || makeProviderDraft(provider);
+    await window.electron.providers.saveConfig({
+      id: provider.id,
+      enabled: draft.enabled,
+      baseUrl: draft.baseUrl,
+      defaultModel: draft.defaultModel,
+      customModels: parseCustomModels(draft.customModelsText)
+    });
+    if (settings.provider === provider.id) {
+      setSettings((prev) => ({ ...prev, model: draft.defaultModel || prev.model }));
+    }
+    await refreshProviders();
+  };
+
+  const handleProviderKeySave = async (provider: ProviderInfo) => {
+    const apiKey = apiKeyInputs[provider.id]?.trim() || '';
+    await window.electron.providers.setApiKey(provider.id, apiKey);
+    setApiKeyInputs((prev) => ({ ...prev, [provider.id]: '' }));
+    await refreshProviders();
+  };
+
+  const handleProviderKeyClear = async (provider: ProviderInfo) => {
+    await window.electron.providers.clearApiKey(provider.id);
+    await refreshProviders();
+  };
+
+  const handleProviderTest = async (provider: ProviderInfo) => {
+    const draft = providerDrafts[provider.id] || makeProviderDraft(provider);
+    setTestStates((prev) => ({ ...prev, [provider.id]: { status: 'testing' } }));
+    try {
+      const result = await window.electron.providers.testConnection({
+        providerId: provider.id,
+        baseUrl: draft.baseUrl,
+        apiKey: apiKeyInputs[provider.id]?.trim() || undefined
+      }) as { ok: boolean; message: string; status?: number; models?: string[] };
+      setTestStates((prev) => ({
+        ...prev,
+        [provider.id]: {
+          status: result.ok ? 'success' : 'error',
+          message: result.status ? `${result.message} (${result.status})` : result.message,
+          models: result.models
+        }
+      }));
+    } catch (error) {
+      setTestStates((prev) => ({
+        ...prev,
+        [provider.id]: {
+          status: 'error',
+          message: error instanceof Error ? error.message : t('app.error')
+        }
+      }));
+    }
+  };
+
+  const handleProviderActivate = async (provider: ProviderInfo) => {
+    const draft = providerDrafts[provider.id] || makeProviderDraft(provider);
+    const nextModel = draft.defaultModel || provider.defaultModel || provider.models[0] || '';
+    await onProviderChange(provider.id, nextModel);
+    setSettings((prev) => ({ ...prev, provider: provider.id as Provider, model: nextModel }));
   };
 
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
@@ -207,7 +268,6 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
     try {
       await window.electron.config.set('telemetryEnabled', enabled);
     } catch {
-      // revert on failure
       setTelemetryEnabled(!enabled);
     }
   };
@@ -217,8 +277,7 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
     try {
       localStorage.clear();
       await onSave({
-        provider: 'glm',
-        apiKey: '',
+        provider: 'zai',
         model: 'glm-5.1',
         theme: 'light',
         fontSize: 14
@@ -337,43 +396,119 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
           <section className="settings-section settings-animate-in">
             <h2>{t('settings.tabs.providers')}</h2>
             <p className="settings-lead">
-              {t('settings.providers.lead')}{providersMeta?.configPath ? `: ${providersMeta.configPath}` : ''}.
+              Провайдеры и ключи хранятся в desktop settings. Ключи шифруются через Electron safeStorage.
             </p>
             {providersError && <p className="settings-save-error" role="alert">{providersError}</p>}
             {providersMeta && (
               <p className="setting-hint">
-                CLI: {providersMeta.cliPath ? `${providersMeta.cliPath} (${providersMeta.cliSource || 'auto'})` : t('settings.providers.cliNotFound')}
+                CLI: {providersMeta.cliPath ? `${providersMeta.cliPath} (${providersMeta.cliSource || 'auto'})` : t('settings.providers.cliNotFound')} ·
+                secure storage: {providersMeta.encryptionAvailable ? 'available' : 'unavailable'}
               </p>
             )}
-            <div className="provider-card-grid">
-              {providerOptions.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`provider-card ${settings.provider === p.id ? 'selected' : ''}`}
-                  onClick={() => {
-                    const defaultModel = p.models[0] || '';
-                    setSettings((prev) => ({ ...prev, provider: p.id, model: defaultModel }));
-                  }}
-                >
-                  <span className="provider-card-badge">{p.short}</span>
-                  <span className="provider-card-name">{p.name}</span>
-                  {!p.configured && <span className="setting-hint">{t('settings.providers.fallback')}</span>}
-                </button>
-              ))}
-            </div>
 
-            <div className="setting-field setting-field-spaced">
-              <label htmlFor="apiKey">{t('settings.providers.apiKeyLabel')}</label>
-              <input
-                id="apiKey"
-                type="password"
-                value={settings.apiKey}
-                onChange={(e) => setSettings((prev) => ({ ...prev, apiKey: e.target.value }))}
-                placeholder={t('settings.providers.apiKeyPlaceholder')}
-                autoComplete="off"
-              />
-              <p className="setting-hint">{t('settings.providers.apiKeyHint')}</p>
+            <div className="provider-card-grid provider-card-grid-detailed">
+              {providerOptions.map((provider) => {
+                const draft = providerDrafts[provider.id] || makeProviderDraft(provider);
+                const test = testStates[provider.id] || { status: 'idle' };
+                return (
+                  <article
+                    key={provider.id}
+                    className={`provider-card provider-card-detailed ${settings.provider === provider.id ? 'selected' : ''}`}
+                  >
+                    <div className="provider-card-main">
+                      <span className="provider-card-badge">{provider.short}</span>
+                      <div>
+                        <h3 className="provider-card-name">{provider.name}</h3>
+                        <p className="setting-hint">
+                          {provider.modelSource === 'static' ? `${provider.models.length} models` : provider.modelSource}
+                          {' · '}
+                          {provider.keyStatus.configured ? `key configured${provider.keyStatus.last4 ? ` · ****${provider.keyStatus.last4}` : ''}` : 'no key'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={draft.enabled}
+                        className={`settings-toggle ${draft.enabled ? 'on' : 'off'}`}
+                        onClick={() => updateProviderDraft(provider.id, { enabled: !draft.enabled })}
+                      >
+                        {draft.enabled ? t('settings.telemetry.on') : t('settings.telemetry.off')}
+                      </button>
+                    </div>
+
+                    <div className="provider-config-grid">
+                      <label className="setting-field">
+                        <span>Base URL</span>
+                        <input
+                          value={draft.baseUrl}
+                          onChange={(event) => updateProviderDraft(provider.id, { baseUrl: event.target.value })}
+                          placeholder="https://api.example.com/v1"
+                        />
+                      </label>
+                      <label className="setting-field">
+                        <span>Default model</span>
+                        <input
+                          value={draft.defaultModel}
+                          onChange={(event) => updateProviderDraft(provider.id, { defaultModel: event.target.value })}
+                          list={`models-${provider.id}`}
+                        />
+                        <datalist id={`models-${provider.id}`}>
+                          {provider.models.map((model) => <option key={model} value={model} />)}
+                        </datalist>
+                      </label>
+                    </div>
+
+                    <label className="setting-field">
+                      <span>Custom models (comma or newline separated)</span>
+                      <textarea
+                        rows={2}
+                        value={draft.customModelsText}
+                        onChange={(event) => updateProviderDraft(provider.id, { customModelsText: event.target.value })}
+                        placeholder="model-a, model-b"
+                      />
+                    </label>
+
+                    <div className="provider-key-row">
+                      <input
+                        type="password"
+                        value={apiKeyInputs[provider.id] || ''}
+                        onChange={(event) => setApiKeyInputs((prev) => ({ ...prev, [provider.id]: event.target.value }))}
+                        placeholder={provider.authRequired ? t('settings.providers.apiKeyPlaceholder') : 'No key required'}
+                        autoComplete="off"
+                      />
+                      <button type="button" className="ghost-action-button" onClick={() => void handleProviderKeySave(provider)}>
+                        Save key
+                      </button>
+                      <button type="button" className="ghost-action-button" onClick={() => void handleProviderKeyClear(provider)}>
+                        Clear
+                      </button>
+                    </div>
+
+                    <div className="provider-card-actions">
+                      <button type="button" className="ghost-action-button" onClick={() => void handleProviderSave(provider)}>
+                        Save provider
+                      </button>
+                      <button type="button" className="ghost-action-button" onClick={() => void handleProviderActivate(provider)}>
+                        Use
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-action-button"
+                        disabled={test.status === 'testing'}
+                        onClick={() => void handleProviderTest(provider)}
+                      >
+                        {test.status === 'testing' ? t('app.loading') : 'Test connection'}
+                      </button>
+                    </div>
+                    {test.status !== 'idle' && (
+                      <p className={`provider-test-result provider-test-${test.status}`} role={test.status === 'error' ? 'alert' : undefined}>
+                        {test.message || (test.status === 'success' ? 'Connection OK' : '')}
+                        {test.models && test.models.length > 0 ? ` · ${test.models.slice(0, 3).join(', ')}` : ''}
+                      </p>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           </section>
         )}
@@ -433,13 +568,22 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
 
             <div className="settings-diag-group">
               <div className="settings-diag-buttons">
+                {providersMeta?.localConfigPath && (
+                  <button
+                    type="button"
+                    className="ghost-action-button"
+                    onClick={() => void handleOpenConfig(providersMeta.localConfigPath!)}
+                  >
+                    {t('settings.config.openLocal')}
+                  </button>
+                )}
                 {providersMeta?.configPath && (
                   <button
                     type="button"
                     className="ghost-action-button"
                     onClick={() => void handleOpenConfig(providersMeta.configPath!)}
                   >
-                    {t('settings.config.openLocal')}
+                    {t('settings.config.openDesktop')}
                   </button>
                 )}
                 {userDataPath && (
@@ -448,7 +592,7 @@ export function Settings({ config, onSave }: SettingsProps): React.ReactElement 
                     className="ghost-action-button"
                     onClick={() => void handleOpenConfig(userDataPath)}
                   >
-                    {t('settings.config.openDesktop')}
+                    User data
                   </button>
                 )}
                 <button

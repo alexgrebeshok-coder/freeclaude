@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AppConfig, ChatSession } from '../../types';
+import { AppConfig, ChatSession, ProviderInfo } from '../../types';
 import { Icon } from '../ui/Icon';
 
 function estimateSessionTokens(chat: ChatSession | null, locale: string): { approx: number; label: string } {
@@ -19,11 +19,16 @@ function estimateSessionTokens(chat: ChatSession | null, locale: string): { appr
   return { approx, label: `≈ ${approx.toLocaleString(locale)}` };
 }
 
-function formatCostHint(tokens: number): string {
-  if (tokens <= 0) {
+function formatCostHint(tokens: number, provider?: ProviderInfo): string {
+  if (tokens <= 0 || !provider?.price) {
     return '—';
   }
-  return `≈ ${(tokens * 0.000002).toFixed(4)} USD`;
+  const inputTokens = Math.ceil(tokens * 0.65);
+  const outputTokens = Math.ceil(tokens * 0.35);
+  const cost =
+    (inputTokens / 1_000_000) * provider.price.inputPerMillion +
+    (outputTokens / 1_000_000) * provider.price.outputPerMillion;
+  return `≈ ${cost < 0.0001 ? '<0.0001' : cost.toFixed(4)} USD`;
 }
 
 function sessionDurationMs(chat: ChatSession | null, t: (key: string, options?: Record<string, unknown>) => string): string {
@@ -48,6 +53,7 @@ interface InspectorPanelProps {
   open: boolean;
   compact: boolean;
   config: AppConfig;
+  provider?: ProviderInfo;
   activeChat: ChatSession | null;
   /**
    * CLI diagnostics surfaced from `freeclaude:message` events with
@@ -66,6 +72,7 @@ export function InspectorPanel({
   open,
   compact,
   config,
+  provider,
   activeChat,
   diagnostics,
   onClose,
@@ -129,7 +136,7 @@ export function InspectorPanel({
             </div>
             <div>
               <dt>{t('inspector.provider')}</dt>
-              <dd>{config.provider.toUpperCase()}</dd>
+              <dd>{provider?.short || config.provider.toUpperCase()}</dd>
             </div>
             <div>
               <dt>{t('inspector.tokens')}</dt>
@@ -137,7 +144,7 @@ export function InspectorPanel({
             </div>
             <div>
               <dt>{t('inspector.cost')}</dt>
-              <dd className="inspector-hint">{formatCostHint(tokenInfo.approx)} · {t('inspector.estimate')}</dd>
+              <dd className="inspector-hint">{formatCostHint(tokenInfo.approx, provider)} · {t('inspector.estimate')}</dd>
             </div>
           </dl>
         </section>

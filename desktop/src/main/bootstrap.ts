@@ -10,9 +10,13 @@ import { getLogger } from './logger';
 import { setupAutoUpdater } from './updater';
 import {
   InvokeChannels,
+  EventChannels,
+  EventSchemas,
   InvokeSchemas,
   IpcContractError,
   parseInvoke,
+  validateEvent,
+  type EventChannel,
   type InvokeChannel
 } from '../shared/ipc-contract';
 import type { ZodTypeAny } from 'zod';
@@ -210,6 +214,12 @@ if (!fs.existsSync(configDir)) {
   fs.mkdirSync(configDir, { recursive: true });
 }
 
+const SENSITIVE_CONFIG_KEYS = new Set(['apiKey', 'api_key', 'providerConfigs']);
+
+function isSensitiveConfigKey(key: unknown): key is string {
+  return typeof key === 'string' && SENSITIVE_CONFIG_KEYS.has(key);
+}
+
 // ---------------------------------------------------------------------------
 // Service instances
 // ---------------------------------------------------------------------------
@@ -253,6 +263,14 @@ function ipcHandle(channel: InvokeChannel, handler: (...args: unknown[]) => unkn
       return { ok: false, error: 'internal error' };
     }
   });
+}
+
+function sendRendererEvent(channel: EventChannel, payload: unknown): void {
+  const schema = (EventSchemas as Record<string, ZodTypeAny>)[channel];
+  const validated = validateEvent(channel, schema, payload, (err) => {
+    log.warn('ipc-invalid-event-payload', { channel, error: err.message });
+  });
+  mainWindow?.webContents.send(channel, validated);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,18 +366,18 @@ function createWindow(): void {
 function initializeServices(): void {
   freeclaudeBridge = new FreeClaudeBridge();
   freeclaudeBridge.on('message', (data) => {
-    mainWindow?.webContents.send('freeclaude:message', data);
+    sendRendererEvent(EventChannels.freeclaudeMessage, data);
   });
   freeclaudeBridge.on('error', (error) => {
-    mainWindow?.webContents.send('freeclaude:error', error);
+    sendRendererEvent(EventChannels.freeclaudeError, error);
   });
 
   terminalManager = new TerminalManager();
   terminalManager.on('data', (id, data) => {
-    mainWindow?.webContents.send('terminal:data', { id, data });
+    sendRendererEvent(EventChannels.terminalData, { id, data });
   });
   terminalManager.on('exit', (id, code) => {
-    mainWindow?.webContents.send('terminal:exit', { id, code });
+    sendRendererEvent(EventChannels.terminalExit, { id, code });
   });
 
   // FileManager restricts all paths to os.homedir() by default
@@ -438,6 +456,31 @@ function setupIPC(): void {
 
   ipcHandle(InvokeChannels.freeclaudeGetResolvedConfig, () => freeclaudeBridge?.getResolvedConfig());
 
+  ipcHandle(InvokeChannels.providerSaveConfig, (update) => {
+    return freeclaudeBridge?.saveProviderConfig(update as Parameters<FreeClaudeBridge['saveProviderConfig']>[0]);
+  });
+
+  ipcHandle(InvokeChannels.providerSetApiKey, (request) => {
+    const { providerId, apiKey } = request as { providerId: string; apiKey: string };
+    return freeclaudeBridge?.setProviderApiKey(providerId, apiKey);
+  });
+
+  ipcHandle(InvokeChannels.providerClearApiKey, (request) => {
+    const { providerId } = request as { providerId: string };
+    return freeclaudeBridge?.clearProviderApiKey(providerId);
+  });
+
+  ipcHandle(InvokeChannels.providerSetActive, (request) => {
+    const { providerId, model } = request as { providerId: string; model?: string };
+    return freeclaudeBridge?.setActiveProvider(providerId, model);
+  });
+
+  ipcHandle(InvokeChannels.providerTestConnection, (request) => {
+    return freeclaudeBridge?.testProviderConnection(
+      request as Parameters<FreeClaudeBridge['testProviderConnection']>[0]
+    );
+  });
+
   // -- Terminal --
   ipcHandle(InvokeChannels.terminalCreate, async (options) => {
     return terminalManager?.createTerminal(
@@ -493,6 +536,10 @@ function setupIPC(): void {
 
   // -- Config --
   ipcHandle(InvokeChannels.configGet, (key) => {
+    if (isSensitiveConfigKey(key)) {
+      log.warn('blocked-sensitive-config-read', { key });
+      return undefined;
+    }
     const configPath = path.join(configDir, 'settings.json');
     try {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
@@ -503,6 +550,10 @@ function setupIPC(): void {
   });
 
   ipcHandle(InvokeChannels.configSet, (key, value) => {
+    if (isSensitiveConfigKey(key)) {
+      log.warn('blocked-sensitive-config-write', { key });
+      return { ok: false, error: 'Sensitive provider settings must use secure provider IPC.' };
+    }
     const configPath = path.join(configDir, 'settings.json');
     let config: Record<string, unknown> = {};
     try {
