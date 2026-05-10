@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useAppTranslation } from '../hooks/useAppTranslation';
 
 import { Icon } from './ui/Icon';
 
@@ -21,7 +21,7 @@ interface ProvidersPayload {
  * children — this component owns its own visibility state.
  */
 export function Onboarding(): React.ReactElement | null {
-  const { t } = useTranslation();
+  const { t } = useAppTranslation();
   const [open, setOpen] = useState(false);
   const [providers, setProviders] = useState<ProvidersPayload | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);

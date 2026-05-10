@@ -4,6 +4,51 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 
+class DebugErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { err?: Error }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = {};
+  }
+
+  static getDerivedStateFromError(err: Error): { err: Error } {
+    return { err };
+  }
+
+  componentDidCatch(err: Error, info: React.ErrorInfo): void {
+    // #region agent log
+    fetch('http://127.0.0.1:7483/ingest/cd715575-ed80-4222-acf6-07a333a1474f', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '87012e' },
+      body: JSON.stringify({
+        sessionId: '87012e',
+        runId: 'pre-fix',
+        hypothesisId: 'H6',
+        location: 'main.tsx:ErrorBoundary',
+        message: err.message,
+        data: { stack: err.stack ?? '', componentStack: info.componentStack },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+  }
+
+  render(): React.ReactNode {
+    const err = this.state?.err;
+    if (err) {
+      return (
+        <div style={{ padding: 24 }}>
+          <h1>FreeClaude UI error</h1>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>{err.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // #region agent log
 fetch('http://127.0.0.1:7483/ingest/cd715575-ed80-4222-acf6-07a333a1474f', {
   method: 'POST',
@@ -69,8 +114,10 @@ const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
   root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
+    <DebugErrorBoundary>
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    </DebugErrorBoundary>
   );
 }

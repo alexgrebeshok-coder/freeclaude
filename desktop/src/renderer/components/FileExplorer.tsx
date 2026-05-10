@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
+import { useAppTranslation } from '../hooks/useAppTranslation';
 import { Icon } from './ui/Icon';
 
 interface FileItem {
@@ -48,8 +49,23 @@ function computeVirtualSlice(
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function FileExplorer({ onFileSelect }: FileExplorerProps): React.ReactElement {
-  const { t } = useTranslation();
+function FileExplorerInner({ onFileSelect }: FileExplorerProps): React.ReactElement {
+  const { t } = useAppTranslation();
+  // #region agent log
+  fetch('http://127.0.0.1:7483/ingest/cd715575-ed80-4222-acf6-07a333a1474f', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '87012e' },
+    body: JSON.stringify({
+      sessionId: '87012e',
+      runId: 'post-fix',
+      hypothesisId: 'H1',
+      location: 'FileExplorer.tsx:after-useTranslation',
+      message: 'useAppTranslation completed',
+      data: { tIsFunction: typeof t === 'function' },
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
 
   // null = home dir not yet resolved
   const [currentPath, setCurrentPath] = useState<string | null>(null);
@@ -390,4 +406,35 @@ export function FileExplorer({ onFileSelect }: FileExplorerProps): React.ReactEl
       </div>
     </div>
   );
+}
+
+export function FileExplorer(props: FileExplorerProps): React.ReactElement {
+  // #region agent log
+  fetch('http://127.0.0.1:7483/ingest/cd715575-ed80-4222-acf6-07a333a1474f', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '87012e' },
+    body: JSON.stringify({
+      sessionId: '87012e',
+      runId: 'post-fix',
+      hypothesisId: 'H2',
+      location: 'FileExplorer.tsx:gate',
+      message: 'FileExplorer gate before inner mount',
+      data: {
+        isInitialized: i18n.isInitialized,
+        initializedStoreOnce: Boolean((i18n as { initializedStoreOnce?: boolean }).initializedStoreOnce),
+        language: i18n.language,
+        resolvedLanguage: i18n.resolvedLanguage,
+        languagesLen: Array.isArray(i18n.languages) ? i18n.languages.length : null,
+        defaultNS: i18n.options?.defaultNS,
+        reactOptsIsObject: typeof i18n.options?.react === 'object' && i18n.options.react !== null,
+        reactOptKeys:
+          i18n.options?.react && typeof i18n.options.react === 'object'
+            ? Object.keys(i18n.options.react as object)
+            : []
+      },
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
+  return <FileExplorerInner {...props} />;
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import i18next from 'i18next';
-import { useTranslation } from 'react-i18next';
+import { useAppTranslation } from '../hooks/useAppTranslation';
 import { useAppVersion } from '../hooks/useAppVersion';
 import { AppConfig, Provider, ProviderInfo, ProvidersPayload } from '../types';
 import { normalizeProviderId } from '../../shared/provider-catalog';
@@ -57,7 +57,7 @@ export function Settings({
   onProviderChange,
   onSave
 }: SettingsProps): React.ReactElement {
-  const { t } = useTranslation();
+  const { t } = useAppTranslation();
   const version = useAppVersion();
   const [settings, setSettings] = useState<SettingsState>({ ...config });
   const [saved, setSaved] = useState(false);

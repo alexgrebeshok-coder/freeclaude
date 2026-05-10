@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useAppTranslation } from '../hooks/useAppTranslation';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
@@ -75,7 +75,7 @@ function buildXtermTheme(mode: 'light' | 'dark'): Record<string, string> {
 let tabSerial = 0;
 
 export function Terminal({ isVisible, cwd }: TerminalProps): React.ReactElement {
-  const { t } = useTranslation();
+  const { t } = useAppTranslation();
   // #region agent log
   fetch('http://127.0.0.1:7483/ingest/cd715575-ed80-4222-acf6-07a333a1474f', {
     method: 'POST',

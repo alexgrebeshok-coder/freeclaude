@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useAppTranslation } from '../../hooks/useAppTranslation';
 import { AppConfig, ChatSession, ProviderInfo } from '../../types';
 import { Icon } from '../ui/Icon';
 
@@ -81,7 +81,7 @@ export function InspectorPanel({
   onExportMarkdown,
   onRenameChat
 }: InspectorPanelProps): React.ReactElement {
-  const { i18n, t } = useTranslation();
+  const { i18n, t } = useAppTranslation();
   const tokenInfo = useMemo(() => estimateSessionTokens(activeChat, i18n.language), [activeChat, i18n.language]);
   const durationLabel = useMemo(() => sessionDurationMs(activeChat, t), [activeChat, t]);
   const [titleDraft, setTitleDraft] = useState(activeChat?.title ?? '');

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useAppTranslation } from '../../hooks/useAppTranslation';
 import { Icon } from '../ui/Icon';
 
 export interface HomeSuggestion {
@@ -49,7 +49,7 @@ export function HomeCanvas({
   suggestions,
   composerRef
 }: HomeCanvasProps): React.ReactElement {
-  const { t } = useTranslation();
+  const { t } = useAppTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const innerRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = composerRef ?? innerRef;

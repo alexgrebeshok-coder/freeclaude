@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useAppTranslation } from '../hooks/useAppTranslation';
 import { Message, ProviderInfo } from '../types';
 import { Icon } from './ui/Icon';
 import { MarkdownMessage } from './chat/MarkdownMessage';
@@ -54,7 +54,7 @@ export function Chat({
   providers = [],
   onProviderChange
 }: ChatProps): React.ReactElement {
-  const { t } = useTranslation();
+  const { t } = useAppTranslation();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRegionRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
