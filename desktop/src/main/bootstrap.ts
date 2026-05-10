@@ -46,7 +46,7 @@ process.on('unhandledRejection', (reason: unknown) => {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const DEV_RENDERER_URL = 'http://127.0.0.1:3000/';
+const DEV_RENDERER_URL = 'http://localhost:3000/';
 const forgeDevServerUrl = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL;
 const isDevelopment = Boolean(forgeDevServerUrl) || process.env.NODE_ENV === 'development';
 
