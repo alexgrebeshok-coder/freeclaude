@@ -294,10 +294,12 @@ function createWindow(): void {
     show: false
   });
 
+  const prodIndexHtml = path.join(__dirname, '../renderer/main_window/index.html');
+
   if (isDevelopment) {
     void loadDevelopmentRenderer(mainWindow, forgeDevServerUrl || DEV_RENDERER_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/main_window/index.html'));
+    mainWindow.loadFile(prodIndexHtml);
   }
 
   mainWindow.once('ready-to-show', () => {

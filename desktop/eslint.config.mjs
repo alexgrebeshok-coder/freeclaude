@@ -20,6 +20,7 @@ export default [
     ignores: [
       'node_modules/**',
       '.vite/**',
+      'renderer/**',
       'out/**',
       'dist/**',
       'legacy/**',

@@ -1013,9 +1013,11 @@ export default function App(): React.ReactElement {
           <section className={`workspace-panel ${activeWorkspace.type === 'files' ? 'is-active' : ''}`}>
             <div className="files-workspace">
               <div className="files-browser-pane">
-                <FileExplorer
-                  onFileSelect={(path, content) => setFilePreview({ path, content })}
-                />
+                {activeWorkspace.type === 'files' ? (
+                  <FileExplorer
+                    onFileSelect={(path, content) => setFilePreview({ path, content })}
+                  />
+                ) : null}
               </div>
               <div className="file-preview-pane">
                 {filePreview ? (

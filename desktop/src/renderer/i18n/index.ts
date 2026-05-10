@@ -22,6 +22,8 @@ i18n
   .use(initReactI18next)
   .init({
     fallbackLng: DEFAULT_LOCALE,
+    defaultNS: 'translation',
+    ns: ['translation'],
     supportedLngs: SUPPORTED_LOCALES as unknown as string[],
     nonExplicitSupportedLngs: true,
     resources: {

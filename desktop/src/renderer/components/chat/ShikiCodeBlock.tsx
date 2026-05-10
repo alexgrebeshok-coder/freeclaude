@@ -32,10 +32,20 @@ export function ShikiCodeBlock({
     let cancelled = false;
     const run = async () => {
       try {
-        const out = await codeToHtml(code, {
+        /**
+         * @shikijs/core `codeToTokens` branches on `"themes" in options` and then runs
+         * `Object.entries(options.themes)`. If `themes` is present but nullish (including via
+         * a polluted prototype chain), V8 throws exactly: "Cannot convert undefined or null to object".
+         * Build options from a null prototype and never carry a nullish `themes` key.
+         */
+        const opts = Object.assign(Object.create(null), {
           lang: language || 'text',
           theme: resolveShikiTheme()
-        });
+        }) as Parameters<typeof codeToHtml>[1];
+        if ('themes' in opts) {
+          delete (opts as { themes?: unknown }).themes;
+        }
+        const out = await codeToHtml(code, opts);
         if (!cancelled) {
           setHtml(out);
         }

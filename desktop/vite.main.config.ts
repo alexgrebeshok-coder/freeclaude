@@ -11,7 +11,6 @@ export default defineConfig({
     rollupOptions: {
       external: [
         'electron',
-        'electron-squirrel-startup',
         'node-pty',
         // Native + filesystem-heavy modules must remain external so they load
         // from the on-disk node_modules tree at runtime. Pure-JS deps such as

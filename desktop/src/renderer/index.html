@@ -3,6 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    No <meta http-equiv="Content-Security-Policy"> here: in packaged Electron,
+    script-src 'self' combined with file:// / custom protocols often blocks
+    Vite ES-module bundles and yields a blank (white) renderer. Hardening
+    belongs in session headers or a carefully tuned policy once module URLs
+    are verified for your Electron version.
+  -->
   <title>FreeClaude Desktop</title>
   <link rel="stylesheet" href="/styles/theme.css">
   <link rel="stylesheet" href="/styles/tailwind.css">
