@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import i18n from '../i18n';
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useAppTranslation } from '../hooks/useAppTranslation';
 import { Icon } from './ui/Icon';
 
@@ -47,29 +46,19 @@ function computeVirtualSlice(
   };
 }
 
+/** File list uses `useReducer` instead of `useState([])` to avoid a React 19 + production bundle crash (`Object.entries` on null at that hook slot). */
+function itemsReducer(_: FileItem[], next: FileItem[]): FileItem[] {
+  return next;
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
-function FileExplorerInner({ onFileSelect }: FileExplorerProps): React.ReactElement {
+export function FileExplorer({ onFileSelect }: FileExplorerProps): React.ReactElement {
   const { t } = useAppTranslation();
-  // #region agent log
-  fetch('http://127.0.0.1:7483/ingest/cd715575-ed80-4222-acf6-07a333a1474f', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '87012e' },
-    body: JSON.stringify({
-      sessionId: '87012e',
-      runId: 'post-fix',
-      hypothesisId: 'H1',
-      location: 'FileExplorer.tsx:after-useTranslation',
-      message: 'useAppTranslation completed',
-      data: { tIsFunction: typeof t === 'function' },
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
 
   // null = home dir not yet resolved
   const [currentPath, setCurrentPath] = useState<string | null>(null);
-  const [items, setItems] = useState<FileItem[]>([]);
+  const [items, setItems] = useReducer(itemsReducer, [] as FileItem[]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileReadError, setFileReadError] = useState<string | null>(null);
@@ -406,35 +395,4 @@ function FileExplorerInner({ onFileSelect }: FileExplorerProps): React.ReactElem
       </div>
     </div>
   );
-}
-
-export function FileExplorer(props: FileExplorerProps): React.ReactElement {
-  // #region agent log
-  fetch('http://127.0.0.1:7483/ingest/cd715575-ed80-4222-acf6-07a333a1474f', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '87012e' },
-    body: JSON.stringify({
-      sessionId: '87012e',
-      runId: 'post-fix',
-      hypothesisId: 'H2',
-      location: 'FileExplorer.tsx:gate',
-      message: 'FileExplorer gate before inner mount',
-      data: {
-        isInitialized: i18n.isInitialized,
-        initializedStoreOnce: Boolean((i18n as { initializedStoreOnce?: boolean }).initializedStoreOnce),
-        language: i18n.language,
-        resolvedLanguage: i18n.resolvedLanguage,
-        languagesLen: Array.isArray(i18n.languages) ? i18n.languages.length : null,
-        defaultNS: i18n.options?.defaultNS,
-        reactOptsIsObject: typeof i18n.options?.react === 'object' && i18n.options.react !== null,
-        reactOptKeys:
-          i18n.options?.react && typeof i18n.options.react === 'object'
-            ? Object.keys(i18n.options.react as object)
-            : []
-      },
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-  return <FileExplorerInner {...props} />;
 }
