@@ -297,7 +297,7 @@ function createWindow(): void {
   if (isDevelopment) {
     void loadDevelopmentRenderer(mainWindow, forgeDevServerUrl || DEV_RENDERER_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/main_window/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../.vite/renderer/main_window/index.html'));
   }
 
   mainWindow.once('ready-to-show', () => {
