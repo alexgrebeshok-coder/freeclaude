@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>FreeClaude использует AppleScript только для открытия выбранных вами файлов и папок.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>FreeClaude нужен доступ к папке "Загрузки", чтобы открыть выбранные вами файлы.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>FreeClaude нужен доступ к папке "Документы", чтобы открыть выбранные вами файлы.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>FreeClaude нужен доступ к рабочему столу, чтобы открыть выбранные вами файлы.</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+</dict>
+</plist>

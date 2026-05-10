@@ -8,7 +8,7 @@ export type WorkspaceType =
   | 'files'
   | 'settings';
 
-export type Provider = 'glm' | 'gemini' | 'qwen' | 'ollama' | 'deepseek';
+export type Provider = string;
 
 export interface ToolCall {
   id: string;

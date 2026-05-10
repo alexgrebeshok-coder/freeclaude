@@ -1,0 +1,210 @@
+{
+  "app": {
+    "name": "FreeClaude",
+    "loading": "Загрузка…",
+    "error": "Ошибка",
+    "retry": "Повторить",
+    "cancel": "Отмена",
+    "save": "Сохранить",
+    "close": "Закрыть",
+    "delete": "Удалить",
+    "rename": "Переименовать",
+    "copy": "Копировать",
+    "open": "Открыть"
+  },
+  "nav": {
+    "home": "Главная",
+    "chats": "Чаты",
+    "projects": "Проекты",
+    "files": "Файлы",
+    "terminal": "Терминал",
+    "search": "Поиск",
+    "settings": "Настройки",
+    "newChat": "Новый чат"
+  },
+  "chat": {
+    "placeholder": "Сообщение для FreeClaude…",
+    "send": "Отправить",
+    "stop": "Остановить",
+    "thinking": "FreeClaude думает…",
+    "newSession": "Новая сессия",
+    "clear": "Очистить",
+    "diagnostics": "Диагностика",
+    "noMessages": "Сообщений пока нет",
+    "queued": "В очереди",
+    "warningNoOutput": "Нет ответа от модели уже {{seconds}} с",
+    "copied": "Скопировано",
+    "copyMessage": "Копировать сообщение",
+    "regenerate": "Повторить ответ",
+    "composer": {
+      "continue": "Продолжить работу",
+      "stopHint": "Можно остановить ответ",
+      "keyboardHint": "Enter — отправить, Shift+Enter — новая строка",
+      "placeholder": "Продолжите диалог, опишите задачу, добавьте ограничения или попросите план. Перетащите файлы сюда.",
+      "ariaLabel": "Поле ввода сообщения",
+      "attachFile": "Прикрепить файл",
+      "providerModelTitle": "Провайдер и модель",
+      "tokenEstimate": "≈ {{count}} токенов (оценка по черновику)"
+    },
+    "homeComposer": {
+      "placeholder": "Задайте вопрос или опишите задачу… Shift+Enter — новая строка.",
+      "ariaLabel": "Поле ввода сообщения на главной",
+      "localMode": "Локально",
+      "localTitle": "Локальный режим"
+    }
+  },
+  "settings": {
+    "title": "Настройки",
+    "tabs": {
+      "about": "О программе",
+      "appearance": "Внешний вид",
+      "diagnostics": "Диагностика",
+      "general": "Общие",
+      "label": "Разделы настроек",
+      "models": "Модели",
+      "providers": "Провайдеры",
+      "shortcuts": "Сочетания клавиш"
+    },
+    "telemetry": {
+      "label": "Отправлять анонимную диагностику",
+      "description": "Передаёт только сбои и ошибки в зашифрованном виде. Никакого содержимого чатов.",
+      "on": "Вкл",
+      "off": "Выкл"
+    },
+    "logs": {
+      "open": "Открыть папку логов",
+      "reveal": "Показать файл лога"
+    },
+    "config": {
+      "openLocal": "Открыть ~/.freeclaude.json",
+      "openDesktop": "Открыть desktop settings.json"
+    },
+    "reset": {
+      "label": "Сбросить настройки",
+      "confirm": "Сбросить все локальные настройки FreeClaude?"
+    },
+    "theme": {
+      "label": "Режим интерфейса",
+      "auto": "Авто",
+      "light": "Светлая",
+      "dark": "Тёмная"
+    },
+    "language": {
+      "label": "Язык интерфейса",
+      "ru": "Русский",
+      "en": "English"
+    },
+    "about": {
+      "description": "Локальная рабочая область AI с настольной оболочкой и bridge-процессом.",
+      "version": "Версия",
+      "website": "Сайт"
+    },
+    "fontSize": {
+      "label": "Размер шрифта"
+    },
+    "models": {
+      "currentProvider": "Текущий провайдер",
+      "empty": "Модели не найдены. Проверьте `~/.freeclaude.json` или выберите другой провайдер.",
+      "search": "Поиск модели",
+      "searchPlaceholder": "Начните вводить название…"
+    },
+    "providers": {
+      "apiKeyHint": "Ключ не покидает ваш компьютер без явного использования bridge.",
+      "apiKeyLabel": "API Key",
+      "apiKeyPlaceholder": "Введите ключ",
+      "cliNotFound": "не найден",
+      "fallback": "резервный",
+      "lead": "Провайдеры подтягиваются из локального FreeClaude config"
+    },
+    "saved": "Сохранено",
+    "saveChanges": "Сохранить изменения",
+    "subtitle": "Параметры desktop shell и AI bridge. Сохраняются локально."
+  },
+  "inspector": {
+    "title": "Инспектор",
+    "compactMode": "Компактный режим",
+    "toggleCompact": "Переключить компактный режим инспектора",
+    "close": "Закрыть инспектор",
+    "sections": {
+      "context": "Контекст",
+      "session": "Сессия",
+      "actions": "Быстрые действия",
+      "diagnostics": "Диагностика CLI"
+    },
+    "model": "Модель",
+    "provider": "Провайдер",
+    "tokens": "Токены (оценка)",
+    "cost": "Стоимость",
+    "estimate": "оценка",
+    "chatTitle": "Название чата",
+    "selectChat": "Выберите чат",
+    "duration": {
+      "label": "Длительность",
+      "hours": "{{count}} ч",
+      "minutes": "{{count}} мин",
+      "seconds": "{{count}} с"
+    },
+    "messages": "Сообщений",
+    "clearChat": "Очистить чат",
+    "exportMarkdown": "Экспорт в Markdown",
+    "copySessionId": "Копировать ID сессии"
+  },
+  "terminal": {
+    "noSession": "Терминал ещё не запущен",
+    "emptyStatus": "Нет сессии",
+    "loadingStatus": "Запуск…",
+    "readyStatus": "Готов",
+    "exitedStatus": "Завершён",
+    "clear": "Очистить терминал",
+    "loadingPrompt": "Запускаем shell. Prompt скоро появится здесь.",
+    "newTab": "Новая вкладка",
+    "closeTab": "Закрыть вкладку",
+    "tab": "Вкладка",
+    "subtitle": "Локальный shell для команд и скриптов",
+    "exit": "[терминал завершён, код {{code}}]",
+    "preview": "Терминал недоступен в браузерном превью"
+  },
+  "files": {
+    "loading": "Загрузка…",
+    "empty": "Папка пуста",
+    "openFile": "Открыть файл",
+    "navigateUp": "Перейти в родительскую папку",
+    "listLabel": "Файлы в {{path}}",
+    "fileItemLabel": "Файл {{name}}, {{size}}, изменён {{modified}}",
+    "directoryItemLabel": "Папка {{name}}, изменена {{modified}}",
+    "failedToLoad": "Не удалось загрузить папку",
+    "failedToReadFile": "Не удалось прочитать {{path}}: {{error}}",
+    "previewTitle": "Превью файла",
+    "search": "Поиск по файлам"
+  },
+  "search": {
+    "placeholder": "Глобальный поиск по чатам и проектам",
+    "empty": "Начните вводить запрос"
+  },
+  "onboarding": {
+    "title": "Добро пожаловать в FreeClaude",
+    "subtitle": "Локальный AI-ассистент без OAuth — работает с любыми OpenAI-совместимыми провайдерами.",
+    "stepInstallCli": "Установите CLI",
+    "stepConfigure": "Настройте провайдера",
+    "stepStart": "Откройте чат",
+    "openConfig": "Открыть ~/.freeclaude.json",
+    "openSettings": "Перейти в настройки",
+    "skip": "Пропустить"
+  },
+  "updater": {
+    "checking": "Проверка обновлений…",
+    "available": "Доступна версия {{version}}",
+    "downloading": "Загрузка обновления ({{percent}}%)",
+    "ready": "Версия {{version}} готова",
+    "restart": "Перезапустить и обновить",
+    "later": "Позже",
+    "error": "Не удалось проверить обновления"
+  },
+  "errors": {
+    "cliNotFound": "FreeClaude CLI не найден. Установите его и попробуйте снова.",
+    "alreadyRunning": "Уже выполняется запрос — подождите завершения.",
+    "loadProviders": "Не удалось загрузить список провайдеров.",
+    "fileLoad": "Не удалось загрузить файл.",
+    "rendererFailed": "Не удалось загрузить интерфейс."
+  }
+}

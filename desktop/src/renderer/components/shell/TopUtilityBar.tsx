@@ -10,6 +10,8 @@ interface TopUtilityBarProps {
   status: 'ready' | 'working' | 'error';
   lastError: string | null;
   onSelectWorkspace: (workspace: WorkspaceSelection) => void;
+  inspectorOpen: boolean;
+  onToggleInspector: () => void;
 }
 
 export function TopUtilityBar({
@@ -19,37 +21,45 @@ export function TopUtilityBar({
   config,
   status,
   lastError,
-  onSelectWorkspace
+  onSelectWorkspace,
+  inspectorOpen,
+  onToggleInspector
 }: TopUtilityBarProps): React.ReactElement {
-  return (
-    <header className="topbar">
-      <div className="topbar-breadcrumbs">
-        <span className="topbar-caption">Workspace</span>
-        <div className="topbar-title-group">
-          <h1 className="topbar-title">{activeTitle}</h1>
-          <span className="topbar-subtitle">{projectLabel}</span>
-        </div>
-      </div>
+  const isHome = activeWorkspace.type === 'home';
 
-      <div className="topbar-actions">
-        <button className="topbar-pill" onClick={() => onSelectWorkspace({ type: 'search' })}>
+  return (
+    <header className={`topbar ${isHome ? 'topbar-home-minimal' : ''}`}>
+      {!isHome && (
+        <div className="topbar-breadcrumbs">
+          <span className="topbar-caption">Рабочая область</span>
+          <div className="topbar-title-group">
+            <h1 className="topbar-title">{activeTitle}</h1>
+            <span className="topbar-subtitle">{projectLabel}</span>
+          </div>
+        </div>
+      )}
+
+      <div className={`topbar-actions ${isHome ? 'topbar-actions-home' : ''}`}>
+        <button
+          type="button"
+          className={`topbar-pill ${inspectorOpen ? 'topbar-pill-active' : ''}`}
+          title="Инспектор (⌘I)"
+          onClick={onToggleInspector}
+        >
+          <Icon name="panel-right" size={15} />
+          <span>Инспектор</span>
+        </button>
+
+        <button type="button" className="topbar-pill" onClick={() => onSelectWorkspace({ type: 'search' })}>
           <Icon name="search" size={15} />
           <span>Поиск</span>
         </button>
 
-        <button className="topbar-pill" onClick={() => onSelectWorkspace({ type: 'terminal' })}>
-          <Icon name="terminal" size={15} />
-          <span>Локально</span>
-        </button>
-
-        <div className="topbar-pill topbar-pill-static">
+        <div className="topbar-pill topbar-pill-static topbar-pill-model" title="Провайдер и модель">
           <Icon name="sparkles" size={15} />
-          <span>{config.provider.toUpperCase()}</span>
-        </div>
-
-        <div className="topbar-pill topbar-pill-static">
-          <Icon name="sliders" size={15} />
-          <span>{config.model}</span>
+          <span>
+            {config.provider.toUpperCase()} · {config.model}
+          </span>
         </div>
 
         <div className={`topbar-pill topbar-status topbar-status-${status}`}>
@@ -57,14 +67,14 @@ export function TopUtilityBar({
           <span>{status === 'working' ? 'В работе' : status === 'error' ? 'Нужно внимание' : 'Готово'}</span>
         </div>
 
-        <button className="topbar-pill" onClick={() => onSelectWorkspace({ type: 'settings' })}>
+        <button type="button" className="topbar-pill" onClick={() => onSelectWorkspace({ type: 'settings' })}>
           <Icon name="settings" size={15} />
           <span>Настроить</span>
         </button>
       </div>
 
       {lastError && activeWorkspace.type !== 'chat' && (
-        <div className="topbar-inline-alert">
+        <div className="topbar-inline-alert" role="alert">
           <span>{lastError}</span>
         </div>
       )}

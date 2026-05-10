@@ -8,7 +8,7 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 
 [![v3.4.0](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/alexgrebeshok-coder/freeclaude/releases)
 [![CI](https://github.com/alexgrebeshok-coder/freeclaude/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/alexgrebeshok-coder/freeclaude/actions/workflows/pr-checks.yml)
-[![Desktop](https://img.shields.io/badge/Desktop-Concept-lightgrey)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
+[![Desktop](https://img.shields.io/badge/Desktop-Alpha-orange)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/desktop)
 [![VS Code](https://img.shields.io/badge/VS%20Code-Concept-lightgrey)](https://github.com/alexgrebeshok-coder/freeclaude/tree/main/extension)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
@@ -28,7 +28,7 @@ Fork of Claude Code without OAuth lock-in. Works with any OpenAI-compatible prov
 | **Multi-provider** | ✅ Stable | ZAI, Ollama, Gemini, DeepSeek, OpenAI-compat + fallback |
 | **Voice** | 🧪 Beta | Whisper STT через SoX, требует `brew install sox whisper-cpp` |
 | **Task protocol** | 🔧 Prototype | `freeclaude task run/list/cancel --json` |
-| **Desktop** | 💡 Concept | Дизайн-прототип, не собирается и не запускается |
+| **Desktop** | 🔧 Alpha → 1.0 | Electron + Vite + React; есть live chat / terminal / file browser, идёт сборка 1.0 (см. `desktop/README.md`) |
 | **VS Code extension** | 💡 Concept | Stub, не опубликован |
 | **Memory vault** | 🔧 Prototype | Task protocol пишет Markdown notes в `~/.freeclaude/vault/`, но отдельного UI ещё нет |
 | **Bridge / remote / CCR** | ⛔ Inherited | Anthropic-specific, не поддерживается в этом цикле |
@@ -301,7 +301,7 @@ MIT — use freely, contribute welcome.
 
 **FreeClaude is the autonomous execution kernel and CLI.**
 
-It owns provider routing, multi-provider fallback chains, budget policies, the autonomous task runner, the task/event ledger format (`~/.freeclaude/tasks/*.jsonl`), and the specialist subagent manager. The CLI is the primary surface; desktop and VSCode extension are concept stubs.
+It owns provider routing, multi-provider fallback chains, budget policies, the autonomous task runner, the task/event ledger format (`~/.freeclaude/tasks/*.jsonl`), and the specialist subagent manager. The CLI is the primary surface; the [desktop app](desktop/README.md) is an Electron alpha being assembled into 1.0; the VS Code extension remains a concept stub.
 
 | Surface | Description |
 |---------|-------------|

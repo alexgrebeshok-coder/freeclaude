@@ -33,8 +33,8 @@ export class TerminalManager extends EventEmitter {
     const id = `terminal-${++this.idCounter}`;
     const shell = options.shell || this.getDefaultShell();
     const cwd = options.cwd || os.homedir();
-    const cols = options.cols || 80;
-    const rows = options.rows || 24;
+    const cols = Math.max(20, options.cols || 80);
+    const rows = Math.max(5, options.rows || 24);
 
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-color',
@@ -74,7 +74,7 @@ export class TerminalManager extends EventEmitter {
   resize(id: string, cols: number, rows: number): void {
     const terminal = this.terminals.get(id);
     if (terminal) {
-      terminal.pty.resize(cols, rows);
+      terminal.pty.resize(Math.max(20, cols), Math.max(5, rows));
     }
   }
 

@@ -39,13 +39,30 @@ npm link
 node dist/cli.mjs
 ```
 
-### Method 3: Homebrew (macOS/Linux)
+### Method 3: Homebrew (macOS)
+
+CLI:
 
 ```bash
-# Coming soon
+# Coming soon — see https://github.com/alexgrebeshok-coder/homebrew-freeclaude
 brew tap alexgrebeshok-coder/freeclaude
 brew install freeclaude
 ```
+
+Desktop app (signed and notarized for macOS 11+):
+
+```bash
+brew tap alexgrebeshok-coder/freeclaude
+brew install --cask freeclaude
+```
+
+The Cask formula is generated for every release by
+`desktop/scripts/generate-cask.cjs` and pushed to the
+`homebrew-freeclaude` tap repository. See
+[`desktop/RELEASE.md`](../desktop/RELEASE.md) for the release pipeline.
+
+If you prefer a direct download, grab the latest `.dmg` for your CPU from
+[GitHub Releases](https://github.com/alexgrebeshok-coder/freeclaude/releases?q=desktop-v).
 
 ### Method 4: Docker
 

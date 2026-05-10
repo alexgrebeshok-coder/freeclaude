@@ -1,0 +1,210 @@
+{
+  "app": {
+    "name": "FreeClaude",
+    "loading": "Loading…",
+    "error": "Error",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "delete": "Delete",
+    "rename": "Rename",
+    "copy": "Copy",
+    "open": "Open"
+  },
+  "nav": {
+    "home": "Home",
+    "chats": "Chats",
+    "projects": "Projects",
+    "files": "Files",
+    "terminal": "Terminal",
+    "search": "Search",
+    "settings": "Settings",
+    "newChat": "New chat"
+  },
+  "chat": {
+    "placeholder": "Message FreeClaude…",
+    "send": "Send",
+    "stop": "Stop",
+    "thinking": "FreeClaude is thinking…",
+    "newSession": "New session",
+    "clear": "Clear",
+    "diagnostics": "Diagnostics",
+    "noMessages": "No messages yet",
+    "queued": "Queued",
+    "warningNoOutput": "No output from model for {{seconds}}s",
+    "copied": "Copied",
+    "copyMessage": "Copy message",
+    "regenerate": "Regenerate response",
+    "composer": {
+      "continue": "Continue work",
+      "stopHint": "You can stop the response",
+      "keyboardHint": "Enter to send, Shift+Enter for a new line",
+      "placeholder": "Continue the conversation, describe the task, add constraints, or ask for a plan. Drop files here.",
+      "ariaLabel": "Message composer",
+      "attachFile": "Attach file",
+      "providerModelTitle": "Provider and model",
+      "tokenEstimate": "≈ {{count}} tokens (draft estimate)"
+    },
+    "homeComposer": {
+      "placeholder": "Ask a question or describe a task… Shift+Enter for a new line.",
+      "ariaLabel": "Home message composer",
+      "localMode": "Local",
+      "localTitle": "Local mode"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "about": "About",
+      "appearance": "Appearance",
+      "diagnostics": "Diagnostics",
+      "general": "General",
+      "label": "Settings sections",
+      "models": "Models",
+      "providers": "Providers",
+      "shortcuts": "Shortcuts"
+    },
+    "telemetry": {
+      "label": "Send anonymous diagnostics",
+      "description": "Only encrypted crashes and errors. No chat content is ever sent.",
+      "on": "On",
+      "off": "Off"
+    },
+    "logs": {
+      "open": "Open logs folder",
+      "reveal": "Reveal log file"
+    },
+    "config": {
+      "openLocal": "Open ~/.freeclaude.json",
+      "openDesktop": "Open desktop settings.json"
+    },
+    "reset": {
+      "label": "Reset settings",
+      "confirm": "Reset all local FreeClaude settings?"
+    },
+    "theme": {
+      "label": "Interface mode",
+      "auto": "Auto",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "language": {
+      "label": "Interface language",
+      "ru": "Русский",
+      "en": "English"
+    },
+    "about": {
+      "description": "Local AI workspace with desktop shell and bridge process.",
+      "version": "Version",
+      "website": "Website"
+    },
+    "fontSize": {
+      "label": "Font size"
+    },
+    "models": {
+      "currentProvider": "Current provider",
+      "empty": "No models found. Check `~/.freeclaude.json` or select another provider.",
+      "search": "Search models",
+      "searchPlaceholder": "Start typing a name…"
+    },
+    "providers": {
+      "apiKeyHint": "Your key never leaves your computer without explicit bridge usage.",
+      "apiKeyLabel": "API Key",
+      "apiKeyPlaceholder": "Enter your key",
+      "cliNotFound": "not found",
+      "fallback": "fallback",
+      "lead": "Providers are loaded from the local FreeClaude config"
+    },
+    "saved": "Saved",
+    "saveChanges": "Save changes",
+    "subtitle": "Desktop shell and AI bridge settings. Stored locally."
+  },
+  "inspector": {
+    "title": "Inspector",
+    "compactMode": "Compact mode",
+    "toggleCompact": "Toggle compact inspector mode",
+    "close": "Close inspector",
+    "sections": {
+      "context": "Context",
+      "session": "Session",
+      "actions": "Quick actions",
+      "diagnostics": "CLI diagnostics"
+    },
+    "model": "Model",
+    "provider": "Provider",
+    "tokens": "Tokens (estimate)",
+    "cost": "Cost",
+    "estimate": "estimate",
+    "chatTitle": "Chat title",
+    "selectChat": "Select a chat",
+    "duration": {
+      "label": "Duration",
+      "hours": "{{count}} h",
+      "minutes": "{{count}} min",
+      "seconds": "{{count}} s"
+    },
+    "messages": "Messages",
+    "clearChat": "Clear chat",
+    "exportMarkdown": "Export to Markdown",
+    "copySessionId": "Copy session ID"
+  },
+  "terminal": {
+    "noSession": "Terminal not started yet",
+    "emptyStatus": "No session",
+    "loadingStatus": "Starting…",
+    "readyStatus": "Ready",
+    "exitedStatus": "Exited",
+    "clear": "Clear terminal",
+    "loadingPrompt": "Starting shell. The prompt will appear here shortly.",
+    "newTab": "New tab",
+    "closeTab": "Close tab",
+    "tab": "Tab",
+    "subtitle": "Local shell for quick commands and scripts",
+    "exit": "[terminal exited with code {{code}}]",
+    "preview": "Terminal is unavailable in browser preview"
+  },
+  "files": {
+    "loading": "Loading…",
+    "empty": "Empty directory",
+    "openFile": "Open file",
+    "navigateUp": "Navigate to parent directory",
+    "listLabel": "Files in {{path}}",
+    "fileItemLabel": "File {{name}}, {{size}}, modified {{modified}}",
+    "directoryItemLabel": "Directory {{name}}, modified {{modified}}",
+    "failedToLoad": "Failed to load directory",
+    "failedToReadFile": "Failed to read {{path}}: {{error}}",
+    "previewTitle": "File preview",
+    "search": "Search files"
+  },
+  "search": {
+    "placeholder": "Search across chats and projects",
+    "empty": "Start typing to search"
+  },
+  "onboarding": {
+    "title": "Welcome to FreeClaude",
+    "subtitle": "A local-first AI assistant without OAuth — works with any OpenAI-compatible provider.",
+    "stepInstallCli": "Install the CLI",
+    "stepConfigure": "Configure a provider",
+    "stepStart": "Open the chat",
+    "openConfig": "Open ~/.freeclaude.json",
+    "openSettings": "Go to Settings",
+    "skip": "Skip"
+  },
+  "updater": {
+    "checking": "Checking for updates…",
+    "available": "Version {{version}} is available",
+    "downloading": "Downloading update ({{percent}}%)",
+    "ready": "Version {{version}} is ready",
+    "restart": "Restart to update",
+    "later": "Later",
+    "error": "Failed to check for updates"
+  },
+  "errors": {
+    "cliNotFound": "FreeClaude CLI not found. Please install it and try again.",
+    "alreadyRunning": "A request is already in flight — wait for it to finish.",
+    "loadProviders": "Failed to load providers.",
+    "fileLoad": "Failed to load file.",
+    "rendererFailed": "Failed to load the renderer."
+  }
+}

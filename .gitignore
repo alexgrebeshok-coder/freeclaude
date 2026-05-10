@@ -10,3 +10,4 @@ desktop/pnpm-lock.yaml
 .openclaude-profile.json
 .freeclaude.json
 reports/
+desktop/test-results/

@@ -17,7 +17,16 @@ interface IconProps {
     | 'stop'
     | 'sliders'
     | 'clock'
-    | 'file';
+    | 'file'
+    | 'home'
+    | 'copy'
+    | 'refresh'
+    | 'thumbs-up'
+    | 'thumbs-down'
+    | 'panel-right'
+    | 'x'
+    | 'trash'
+    | 'download';
   size?: number;
   className?: string;
 }
@@ -138,6 +147,69 @@ export function Icon({ name, size = 18, className }: IconProps): React.ReactElem
         <svg {...commonProps}>
           <path d="M8 3H14L19 8V19C19 20.1 18.1 21 17 21H8C6.9 21 6 20.1 6 19V5C6 3.9 6.9 3 8 3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
           <path d="M14 3V8H19" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'home':
+      return (
+        <svg {...commonProps}>
+          <path d="M4 10.5L12 4L20 10.5V19C20 20.1 19.1 21 18 21H6C4.9 21 4 20.1 4 19V10.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M9 21V14H15V21" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'copy':
+      return (
+        <svg {...commonProps}>
+          <rect x="8" y="8" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M5 16H4.5C3.67 16 3 15.33 3 14.5V4.5C3 3.67 3.67 3 4.5 3H14.5C15.33 3 16 3.67 16 4.5V5" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+      );
+    case 'refresh':
+      return (
+        <svg {...commonProps}>
+          <path d="M4 12C4 7.58 7.58 4 12 4C15.1 4 17.8 5.7 19.2 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M20 4V8H16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M20 12C20 16.42 16.42 20 12 20C8.9 20 6.2 18.3 4.8 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M4 20V16H8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'thumbs-up':
+      return (
+        <svg {...commonProps}>
+          <path d="M7 20V10M3 20H7M7 20H10.5C11.33 20 12 19.33 12 18.5V12.5C12 11.67 11.33 11 10.5 11H7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M12 12.5L15.2 4.2C15.4 3.6 16 3.2 16.6 3.3L19 4C20.1 4.3 20.6 5.5 20.1 6.5L18 11H14.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'thumbs-down':
+      return (
+        <svg {...commonProps}>
+          <path d="M7 4V14M3 4H7M7 4H10.5C11.33 4 12 4.67 12 5.5V11.5C12 12.33 11.33 13 10.5 13H7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M12 11.5L15.2 19.8C15.4 20.4 16 20.8 16.6 19.7L19 19C20.1 18.7 20.6 17.5 20.1 16.5L18 12H14.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'panel-right':
+      return (
+        <svg {...commonProps}>
+          <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M14 4V20" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+      );
+    case 'x':
+      return (
+        <svg {...commonProps}>
+          <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    case 'trash':
+      return (
+        <svg {...commonProps}>
+          <path d="M4 7H20M10 11V17M14 11V17M6 7L7 19C7 20.1 7.9 21 9 21H15C16.1 21 17 20.1 17 19L18 7M9 7V4H15V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 'download':
+      return (
+        <svg {...commonProps}>
+          <path d="M12 4V16M12 16L8 12M12 16L16 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M5 20H19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         </svg>
       );
   }

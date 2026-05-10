@@ -65,11 +65,12 @@ freeclaude
 - [**Memory**](MEMORY.md) — How /remember and /recall work
 - [**Voice**](VOICE.md) — Voice mode setup and usage
 - [**Telegram**](TELEGRAM.md) — Telegram bot installation
-- [**Configuration**](CONFIGURATION.md) — Complete config reference
-- [**Architecture**](ARCHITECTURE.md) — For developers (internals)
-- [**Contributing**](CONTRIBUTING.md) — How to contribute
-- [**FAQ**](FAQ.md) — Common questions answered
-- [**Changelog**](CHANGELOG.md) — Version history
+- [**Configuration**](CONFIGURATION.md) — Complete config reference _(stub, expanding for 1.0)_
+- [**Architecture**](ARCHITECTURE.md) — For developers (internals) _(stub, expanding for 1.0)_
+- [**Contributing**](CONTRIBUTING.md) — How to contribute _(stub, expanding for 1.0)_
+- [**FAQ**](FAQ.md) — Common questions answered _(stub, expanding for 1.0)_
+- [**Changelog**](../CHANGELOG.md) — Version history
+- [**Desktop**](../desktop/README.md) — FreeClaude Desktop (Electron) overview
 
 ---
 

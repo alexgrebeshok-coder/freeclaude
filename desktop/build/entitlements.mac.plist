@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Allow JIT compilation.
+    Required by V8/Node.js for JavaScript execution performance.
+    Without this, the app will run in interpreter-only mode and be ~10× slower.
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+
+  <!--
+    Allow unsigned executable memory pages.
+    Required by Node.js when it patches its own code at startup (rarely needed
+    but included defensively for Node native addons that may do so).
+  -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!--
+    Allow DYLD environment variables (DYLD_INSERT_LIBRARIES, etc.).
+    Required by node-pty which uses DYLD_LIBRARY_PATH to locate libpty.dylib.
+    Without this entitlement, node-pty terminal sessions will fail on a
+    notarized/hardened-runtime build.
+  -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+
+  <!--
+    Disable library validation.
+    Required for node-pty and other native Node.js addons whose .node binaries
+    are not signed by the same team as the Electron host binary.
+    TODO (P6): Evaluate replacing this with the narrower
+    com.apple.security.cs.allow-unsigned-executable-memory once node-pty
+    provides pre-signed binaries.
+  -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>
