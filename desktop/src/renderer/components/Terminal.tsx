@@ -76,6 +76,21 @@ let tabSerial = 0;
 
 export function Terminal({ isVisible, cwd }: TerminalProps): React.ReactElement {
   const { t } = useTranslation();
+  // #region agent log
+  fetch('http://127.0.0.1:7483/ingest/cd715575-ed80-4222-acf6-07a333a1474f', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '87012e' },
+    body: JSON.stringify({
+      sessionId: '87012e',
+      runId: 'pre-fix',
+      hypothesisId: 'H1',
+      location: 'Terminal.tsx:render',
+      message: 'Terminal render entry',
+      data: { hasElectron: typeof window !== 'undefined' && !!window.electron },
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
   const shortcutModifier = window.electron.platform === 'darwin' ? '⌘' : 'Ctrl+';
 
   const [tabs, setTabs] = useState<TabInfo[]>([]);

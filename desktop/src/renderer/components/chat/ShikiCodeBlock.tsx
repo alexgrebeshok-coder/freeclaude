@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react';
-import { codeToHtml } from 'shiki/bundle/web';
+import { getSingletonHighlighter, type BundledLanguage } from 'shiki/bundle/web';
 
 function resolveShikiTheme(): 'github-dark' | 'github-light' {
   const t = document.documentElement.dataset.theme;
@@ -33,19 +33,21 @@ export function ShikiCodeBlock({
     const run = async () => {
       try {
         /**
-         * @shikijs/core `codeToTokens` branches on `"themes" in options` and then runs
-         * `Object.entries(options.themes)`. If `themes` is present but nullish (including via
-         * a polluted prototype chain), V8 throws exactly: "Cannot convert undefined or null to object".
-         * Build options from a null prototype and never carry a nullish `themes` key.
+         * Do not use the package export `codeToHtml` from `shiki/bundle/web`: it is implemented
+         * via `createSingletonShorthands`, whose `get()` does
+         * `themes: "theme" in options ? [options.theme] : Object.values(options.themes)`.
+         * When `theme` is not an own property (or options omit it), that evaluates
+         * `Object.values(undefined)` and throws "Cannot convert undefined or null to object",
+         * aborting the renderer (production white screen). Calling `getSingletonHighlighter`
+         * then `highlighter.codeToHtml` uses the core path and avoids that wrapper.
          */
-        const opts = Object.assign(Object.create(null), {
-          lang: language || 'text',
-          theme: resolveShikiTheme()
-        }) as Parameters<typeof codeToHtml>[1];
-        if ('themes' in opts) {
-          delete (opts as { themes?: unknown }).themes;
-        }
-        const out = await codeToHtml(code, opts);
+        const lang = (language || 'text').trim() as BundledLanguage;
+        const theme = resolveShikiTheme();
+        const highlighter = await getSingletonHighlighter({
+          themes: ['github-dark', 'github-light'],
+          langs: [lang]
+        });
+        const out = highlighter.codeToHtml(code, { lang, theme });
         if (!cancelled) {
           setHtml(out);
         }

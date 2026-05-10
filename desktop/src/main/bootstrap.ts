@@ -27,6 +27,21 @@ import type { ZodTypeAny } from 'zod';
 const logger = getLogger();
 const log = logger.scoped('bootstrap');
 
+// #region agent log
+const AGENT_DEBUG_LOG_PATH = '/Users/aleksandrgrebeshok/.cursor/debug-logs/debug-87012e.log';
+
+function agentDebugLog(entry: Record<string, unknown>): void {
+  try {
+    fs.appendFileSync(
+      AGENT_DEBUG_LOG_PATH,
+      JSON.stringify({ sessionId: '87012e', timestamp: Date.now(), ...entry }) + '\n'
+    );
+  } catch {
+    /* ignore debug log failures */
+  }
+}
+// #endregion
+
 // ---------------------------------------------------------------------------
 // Crash reporter — local-only dumps; Track E may flip uploadToServer later
 // ---------------------------------------------------------------------------
@@ -46,7 +61,7 @@ process.on('unhandledRejection', (reason: unknown) => {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const DEV_RENDERER_URL = 'http://localhost:3000/';
+const DEV_RENDERER_URL = 'http://127.0.0.1:3000/';
 const forgeDevServerUrl = process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL;
 const isDevelopment = Boolean(forgeDevServerUrl) || process.env.NODE_ENV === 'development';
 
@@ -312,6 +327,41 @@ function createWindow(): void {
     show: false
   });
 
+  // #region agent log
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    agentDebugLog({
+      runId: 'pre-fix',
+      hypothesisId: 'H1',
+      location: 'bootstrap.ts:preload-error',
+      message: 'preload failed',
+      data: {
+        preloadPath,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    });
+  });
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) {
+      agentDebugLog({
+        runId: 'pre-fix',
+        hypothesisId: 'H2',
+        location: 'bootstrap.ts:console-message',
+        message: 'renderer console',
+        data: { level, message, line, sourceId }
+      });
+    }
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    agentDebugLog({
+      runId: 'pre-fix',
+      hypothesisId: 'H3',
+      location: 'bootstrap.ts:render-process-gone',
+      message: 'renderer process gone',
+      data: { reason: details.reason, exitCode: details.exitCode }
+    });
+  });
+  // #endregion
+
   const prodIndexHtml = path.join(__dirname, '../renderer/main_window/index.html');
 
   if (isDevelopment) {
@@ -337,6 +387,15 @@ function createWindow(): void {
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     rendererLoadFailed = true;
+    // #region agent log
+    agentDebugLog({
+      runId: 'pre-fix',
+      hypothesisId: 'H4',
+      location: 'bootstrap.ts:did-fail-load',
+      message: 'renderer did-fail-load',
+      data: { errorCode, errorDescription, validatedURL }
+    });
+    // #endregion
     log.error('renderer-did-fail-load', { errorCode, errorDescription, validatedURL });
     if (mainWindow && !mainWindow.isDestroyed()) {
       void dialog.showMessageBox(mainWindow, {

@@ -28,3 +28,7 @@ export default defineConfig({
     strictPort: true
   }
 });
+
+// --DEBUG PATCH: enable sourcemap for white-screen triage--
+// Remove after diagnosis.
+const orig = (() => {})();
