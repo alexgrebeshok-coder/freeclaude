@@ -3,7 +3,6 @@ import http from 'http';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import squirrelStartup from 'electron-squirrel-startup';
 import { FreeClaudeBridge } from './freeclaude-bridge';
 import { TerminalManager } from './terminal';
 import { FileManager } from './file-manager';
@@ -17,14 +16,6 @@ import {
   type InvokeChannel
 } from '../shared/ipc-contract';
 import type { ZodTypeAny } from 'zod';
-
-// ---------------------------------------------------------------------------
-// Windows Squirrel installer early exit (no-op on macOS/Linux)
-// ---------------------------------------------------------------------------
-if (squirrelStartup) {
-  app.quit();
-  process.exit(0);
-}
 
 // ---------------------------------------------------------------------------
 // Logger — available immediately so crash handlers can write to it
