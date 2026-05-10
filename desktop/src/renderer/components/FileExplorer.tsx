@@ -82,19 +82,26 @@ export function FileExplorer({ onFileSelect }: FileExplorerProps): React.ReactEl
       scrollContainerRef.current.scrollTop = 0;
     }
     try {
-      const result = (await window.electron.fs.readDir(path)) as
-        | FileItem[]
-        | { error: string }
-        | { entries: FileItem[]; truncated: boolean; total: number };
+      const result = (await window.electron.fs.readDir(path)) as unknown;
 
-      if ('error' in result) {
-        setError((result as { error: string }).error);
-      } else if ('entries' in result) {
-        setItems((result as { entries: FileItem[] }).entries);
+      // Arrays inherit `entries` from Array.prototype, so `'entries' in array` is true.
+      // Treat truncated payloads only when result is a plain object, not a FileItem[].
+      if (result !== null && typeof result === 'object' && !Array.isArray(result) && 'error' in result) {
+        setError(String((result as { error: unknown }).error));
+      } else if (
+        result !== null &&
+        typeof result === 'object' &&
+        !Array.isArray(result) &&
+        'entries' in result
+      ) {
+        const raw = (result as { entries: unknown }).entries;
+        setItems(Array.isArray(raw) ? (raw as FileItem[]) : []);
         setCurrentPath(path);
-      } else {
+      } else if (Array.isArray(result)) {
         setItems(result as FileItem[]);
         setCurrentPath(path);
+      } else {
+        setItems([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('files.failedToLoad'));
