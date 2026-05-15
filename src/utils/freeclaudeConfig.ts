@@ -100,7 +100,7 @@ const KNOWN_PROVIDER_DEFINITIONS: KnownProviderDefinition[] = [
   {
     slug: 'deepseek',
     baseUrl: 'https://api.deepseek.com/v1',
-    models: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder'],
+    models: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder', 'deepseek-v4-pro', 'deepseek-v4-flash'],
   },
   {
     slug: 'mistral',
@@ -199,7 +199,7 @@ const ENV_PROVIDER_DEFINITIONS: EnvProviderDefinition[] = [
     name: 'deepseek',
     envKey: 'DEEPSEEK_API_KEY',
     baseUrl: 'https://api.deepseek.com/v1',
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-pro',
   },
   {
     name: 'mistral',
