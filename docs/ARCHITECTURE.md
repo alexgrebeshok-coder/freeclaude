@@ -1,6 +1,8 @@
 # Architecture
 
-> Status: stub. Full architecture deep dive is part of the 1.0 docs pass.
+The **full bilingual architecture pack** (FreeClaude + Pyrfor + CEOClaw, macro/micro diagrams, EN/RU) lives under **[`docs/architecture/`](architecture/README.md)**. Start at [`architecture/README.md`](architecture/README.md) for the index.
+
+This page keeps a **short** ASCII overview of FreeClaude-only surfaces in *this* repo.
 
 FreeClaude ships as four cooperating surfaces:
 
@@ -47,6 +49,12 @@ freeclaude [-p] [--resume <sessionId>] --output-format stream-json <prompt>
 and parses newline-delimited JSON events (`session_id`, `assistant`, `result`,
 `is_error`). The CLI source for the streaming path is
 [`src/entrypoints/cli.tsx`](../src/entrypoints/cli.tsx).
+
+## Further reading in this repo
+
+- [`architecture/00-ecosystem-macro.md`](architecture/00-ecosystem-macro.md) — how Pyrfor and FreeClaude products relate
+- [`architecture/02-freeclaude-desktop.md`](architecture/02-freeclaude-desktop.md) — Electron IPC detail
+- [`architecture/03-mcp-ceoclaw-and-integrations.md`](architecture/03-mcp-ceoclaw-and-integrations.md) — MCP / CEOClaw
 
 ## To do for 1.0
 
